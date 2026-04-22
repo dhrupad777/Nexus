@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { OnboardingTurnOutputSchema } from "@/lib/schemas";
@@ -18,21 +19,23 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-function formatDay(ts: number): string {
+function formatDayParts(ts: number): { day: string; time: string } {
   const today = new Date();
   const d = new Date(ts);
   const sameDay =
     d.getFullYear() === today.getFullYear() &&
     d.getMonth() === today.getMonth() &&
     d.getDate() === today.getDate();
-  if (sameDay) return "Today";
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (sameDay) return { day: "Today", time };
   const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  if (
+  const isYesterday =
     d.getFullYear() === yesterday.getFullYear() &&
     d.getMonth() === yesterday.getMonth() &&
-    d.getDate() === yesterday.getDate()
-  ) return "Yesterday";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    d.getDate() === yesterday.getDate();
+  if (isYesterday) return { day: "Yesterday", time };
+  const day = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return { day, time };
 }
 
 type GroupedLine =
@@ -236,17 +239,24 @@ export function OnboardingChat({ type }: { type: OrgType | undefined }) {
   return (
     <div className="chat-page">
       <header className="chat-topbar">
-        <div className="chat-topbar-left">
+        <button
+          type="button"
+          className="chat-topbar-back"
+          onClick={() => router.back()}
+          aria-label="Back"
+        >
+          <ChevronLeft size={26} strokeWidth={2.5} />
+        </button>
+        <div className="chat-topbar-center">
           <div className="chat-avatar" aria-hidden>N</div>
-          <div>
-            <div className="chat-topbar-title">Nexus assistant</div>
-            <div className="chat-topbar-sub">
-              {type ? `Registering as ${type === "NGO" ? "NGO" : "Organization"}` : "Onboarding"}
-              {busy ? " · typing…" : " · online"}
-            </div>
-          </div>
+          <span className="chat-topbar-name">
+            Nexus{busy ? " · typing…" : ""}
+            <ChevronRight size={10} strokeWidth={2.5} className="chat-topbar-name-chevron" aria-hidden />
+          </span>
         </div>
-        <Link href="/onboard/form" className="chat-switch-link">Use a form</Link>
+        <div className="chat-topbar-actions">
+          <Link href="/onboard/form" className="chat-switch-link">Form</Link>
+        </div>
       </header>
 
       <div className="chat-surface">
@@ -254,14 +264,18 @@ export function OnboardingChat({ type }: { type: OrgType | undefined }) {
           <AnimatePresence initial={false}>
             {lines.map((line) => {
               if (line.kind === "day") {
+                const parts = formatDayParts(line.at);
                 return (
                   <li key={line.id} style={{ listStyle: "none", display: "contents" }}>
-                    <div className="chat-day">{formatDay(line.at)}</div>
+                    <div className="chat-day">
+                      <strong>{parts.day}</strong> at {parts.time}
+                    </div>
                   </li>
                 );
               }
               const { msg, position } = line;
-              const rowClass = msg.role === "user" ? "chat-row chat-row-user" : "chat-row chat-row-bot";
+              const rowStartClass = position === "single" || position === "top" ? " is-run-start" : "";
+              const rowClass = (msg.role === "user" ? "chat-row chat-row-user" : "chat-row chat-row-bot") + rowStartClass;
               const bubbleBase = msg.role === "user" ? "chat-bubble chat-bubble-user" : "chat-bubble chat-bubble-bot";
               const grouped =
                 position === "top" ? " is-grouped-top"

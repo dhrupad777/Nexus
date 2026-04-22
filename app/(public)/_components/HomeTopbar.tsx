@@ -12,16 +12,9 @@ export function HomeTopbar() {
       <Link href="/" style={{ textDecoration: "none" }}>
         <NexusLogo size="sm" />
       </Link>
-      <div className="topbar-right">
-        <nav className="topbar-anchors" aria-label="Page sections">
-          <a href="#product" className="topbar-anchor">Product</a>
-          <a href="#how" className="topbar-anchor">How it works</a>
-          <a href="#about" className="topbar-anchor">Activity</a>
-        </nav>
-        <Link href={joinHref} className="btn btn-primary" style={{ padding: "8px 14px" }}>
-          Join as NGO / ORG
-        </Link>
-      </div>
+      <Link href={joinHref} className="btn btn-primary" style={{ padding: "8px 14px" }}>
+        Join us
+      </Link>
     </header>
   );
 }

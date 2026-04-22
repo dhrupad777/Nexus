@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type KeyboardEvent } from "react";
+import { Plus, ArrowUp, Mic } from "lucide-react";
 import type { DocType, UploadedDoc } from "../_lib/types";
 
 type Props = {
@@ -23,7 +24,7 @@ export function ChatComposer({
 
   function grow(el: HTMLTextAreaElement) {
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -41,6 +42,8 @@ export function ChatComposer({
     if (taRef.current) taRef.current.style.height = "auto";
     await onSend(text);
   }
+
+  const hasDraft = draft.trim().length > 0 || pendingAttachments.length > 0;
 
   return (
     <div>
@@ -63,17 +66,17 @@ export function ChatComposer({
         <button
           type="button"
           className="chat-icon-btn"
-          aria-label="Attach document photo"
+          aria-label="Attach document or photo"
           onClick={onOpenDocPicker}
         >
-          📎
+          <Plus size={18} strokeWidth={2.5} />
         </button>
 
         <div className="chat-composer-inner">
           <textarea
             ref={taRef}
             rows={1}
-            placeholder="Type a message…"
+            placeholder="Message"
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
@@ -82,17 +85,22 @@ export function ChatComposer({
             onKeyDown={onKey}
             disabled={busy}
           />
+          {hasDraft ? (
+            <button
+              type="button"
+              className="chat-send-btn"
+              aria-label="Send"
+              onClick={send}
+              disabled={busy}
+            >
+              <ArrowUp size={16} strokeWidth={3} />
+            </button>
+          ) : (
+            <span className="chat-mic-btn" aria-hidden="true">
+              <Mic size={16} strokeWidth={2} />
+            </span>
+          )}
         </div>
-
-        <button
-          type="button"
-          className="chat-send-btn"
-          aria-label="Send"
-          onClick={send}
-          disabled={busy || (!draft.trim() && pendingAttachments.length === 0)}
-        >
-          ➤
-        </button>
       </div>
     </div>
   );
