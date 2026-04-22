@@ -1,0 +1,47 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // No public reads — everything served via signed download URLs
+    // Paths are scoped by orgId for isolation.
+
+    // Government documents — org members (or the user themselves during first
+    // onboarding, before custom claims land) can upload. Platform admin can read.
+    match /orgs/{orgId}/govtDocs/{fileName} {
+      allow read: if request.auth != null && (
+        request.auth.token.orgId == orgId ||
+        request.auth.uid == orgId ||
+        request.auth.token.role == 'PLATFORM_ADMIN'
+      );
+      allow write: if request.auth != null
+        && (
+          request.auth.token.orgId == orgId ||
+          // Self-upload branch: fresh signup (no orgId claim yet).
+          // Mirrors the firestore.rules self-create branch on organizations/{uid}.
+          request.auth.uid == orgId
+        )
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|heic|heif)|application/(pdf|octet-stream)');
+    }
+
+    // Photo proofs — host org uploads (authed users), public-read gated in the app.
+    match /tickets/{ticketId}/photoProofs/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+        request.resource.size < 20 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(jpeg|png|webp)|video/mp4');
+    }
+
+    // Signed agreement PDFs — parties only, server-only write.
+    match /agreements/{agreementId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Default deny.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

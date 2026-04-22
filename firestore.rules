@@ -1,0 +1,237 @@
+rules_version = '2';
+
+// NEXUS Firestore rules
+// Source of truth: plan §Write-path discipline + §A.4.
+// Discipline: deny-by-default; money-like / state fields server-only;
+// tickets.urgency & tickets.rapid IMMUTABLE after create; client cannot
+// mutate nested needs[].progressPct (so client may not touch needs[] on update);
+// only badges/* and closed tickets are publicly readable.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── helpers ────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && request.auth.token.role == role;
+    }
+
+    function isPlatformAdmin() {
+      return hasRole('PLATFORM_ADMIN');
+    }
+
+    function isOrgMember(orgId) {
+      return isSignedIn() && request.auth.token.orgId == orgId;
+    }
+
+    // Set of keys present in the incoming payload
+    function keys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Fields the CLIENT must never create/update on ANY doc.
+    // Note: `status` handling is collection-specific, not global.
+    function touchesServerOnly() {
+      return (
+        'phase'           in request.resource.data ||
+        'progressPct'     in request.resource.data ||
+        'rapid'           in request.resource.data ||
+        'reliability'     in request.resource.data ||
+        'badges'          in request.resource.data ||
+        'commitPath'      in request.resource.data ||
+        'embedding'       in request.resource.data ||
+        'advancedEarly'   in request.resource.data ||
+        'phaseChangedAt'  in request.resource.data ||
+        'closedAt'        in request.resource.data
+      );
+    }
+
+    // ─── organizations ───────────────────────────────────────────────────────
+    match /organizations/{orgId} {
+      // Public read: active orgs only (for public profile page).
+      allow read: if resource.data.status == 'ACTIVE';
+      // Member or admin read regardless of status.
+      allow read: if isOrgMember(orgId) || isPlatformAdmin();
+
+      // Create: member of the org; may set status='PENDING_REVIEW' as default,
+      // but reliability/badges must be absent (server-written).
+      allow create: if isOrgMember(orgId)
+        && !('reliability' in request.resource.data)
+        && !('badges' in request.resource.data)
+        && request.resource.data.status == 'PENDING_REVIEW';
+
+      // Self-create branch: a signed-in user registering their own org
+      // BEFORE custom claims are set. The orgId must equal their uid.
+      // Status is locked to PENDING_REVIEW; reliability and badges forbidden.
+      // approveOrg (callable) later flips status -> ACTIVE and sets claims.
+      allow create: if isSignedIn()
+        && orgId == request.auth.uid
+        && !('reliability' in request.resource.data)
+        && !('badges' in request.resource.data)
+        && request.resource.data.status == 'PENDING_REVIEW';
+
+      // Update: member cannot touch status, reliability, badges.
+      allow update: if isOrgMember(orgId)
+        && !('status' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('reliability' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('badges' in request.resource.data.diff(resource.data).affectedKeys());
+
+      // Platform admin can read/write all.
+      allow write: if isPlatformAdmin();
+    }
+
+    // ─── users ───────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read, write: if isPlatformAdmin();
+    }
+
+    // ─── resources ───────────────────────────────────────────────────────────
+    match /resources/{resourceId} {
+      // Resource listings are public for matching.
+      allow read: if true;
+
+      // Create: signed in, orgId matches caller, no embedding.
+      allow create: if isOrgMember(request.resource.data.orgId)
+        && !('embedding' in request.resource.data);
+
+      // Update: resource owner, but status transitions AVAILABLE→RESERVED→DEPLETED
+      // are server-only (driven by contribution commits).
+      allow update: if isOrgMember(resource.data.orgId)
+        && !('status' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('embedding' in request.resource.data.diff(resource.data).affectedKeys());
+
+      allow delete: if isOrgMember(resource.data.orgId);
+      allow write: if isPlatformAdmin();
+    }
+
+    // ─── tickets ─────────────────────────────────────────────────────────────
+    match /tickets/{ticketId} {
+      // Public: closed tickets are fully readable.
+      allow read: if resource.data.phase == 'CLOSED';
+      // Authenticated: any signed-in user can read tickets (dashboard/matching).
+      allow read: if isSignedIn();
+
+      // Create: signed in, no server-only fields, must NOT set progressPct/phase.
+      // urgency + rapid ARE set on create (they're how Flow A/B is chosen) — allowed.
+      // needs[] is allowed on create; client-set needs[*].progressPct is rejected
+      // because needs is the full array; callable will strip any progressPct.
+      allow create: if isSignedIn()
+        && !('phase' in request.resource.data)
+        && !('progressPct' in request.resource.data)
+        && !('reliability' in request.resource.data)
+        && !('embedding' in request.resource.data)
+        && !('advancedEarly' in request.resource.data)
+        && !('phaseChangedAt' in request.resource.data)
+        && !('closedAt' in request.resource.data);
+
+      // Update: host org only. urgency, rapid, needs, phase, progressPct, etc.
+      // ALL locked. Clients can edit title/description/deadline/geo/category.
+      allow update: if isOrgMember(resource.data.hostOrgId)
+        && !('urgency' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('rapid'   in request.resource.data.diff(resource.data).affectedKeys())
+        && !('needs'   in request.resource.data.diff(resource.data).affectedKeys())
+        && !('phase'   in request.resource.data.diff(resource.data).affectedKeys())
+        && !('progressPct' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('advancedEarly' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('phaseChangedAt' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('closedAt' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('embedding' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('hostOrgId' in request.resource.data.diff(resource.data).affectedKeys());
+
+      allow write: if isPlatformAdmin();
+
+      // ── contributions subcollection ──────────────────────────────────────
+      match /contributions/{contributionId} {
+        allow read: if isSignedIn();
+
+        // Create: PROPOSED only; status + commitPath server-owned.
+        allow create: if isSignedIn()
+          && isOrgMember(request.resource.data.contributorOrgId)
+          && !('status' in request.resource.data)
+          && !('commitPath' in request.resource.data)
+          && !('agreementId' in request.resource.data)
+          && !('committedAt' in request.resource.data)
+          && !('signedOffAt' in request.resource.data);
+
+        // Update: contributor may edit offered/notes while PROPOSED;
+        // status/commitPath/agreementId/timestamps server-only.
+        allow update: if (
+            isOrgMember(resource.data.contributorOrgId) ||
+            isOrgMember(get(/databases/$(database)/documents/tickets/$(ticketId)).data.hostOrgId)
+          )
+          && !('status'       in request.resource.data.diff(resource.data).affectedKeys())
+          && !('commitPath'   in request.resource.data.diff(resource.data).affectedKeys())
+          && !('agreementId'  in request.resource.data.diff(resource.data).affectedKeys())
+          && !('committedAt'  in request.resource.data.diff(resource.data).affectedKeys())
+          && !('signedOffAt'  in request.resource.data.diff(resource.data).affectedKeys())
+          && !('contributorOrgId' in request.resource.data.diff(resource.data).affectedKeys())
+          && !('needIndex'    in request.resource.data.diff(resource.data).affectedKeys());
+
+        allow write: if isPlatformAdmin();
+      }
+
+      // ── photoProofs subcollection ────────────────────────────────────────
+      match /photoProofs/{proofId} {
+        // Public read only once the ticket is CLOSED.
+        allow read: if get(/databases/$(database)/documents/tickets/$(ticketId)).data.phase == 'CLOSED';
+        // Authenticated: any signed-in user can see proofs on open tickets.
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && isOrgMember(get(/databases/$(database)/documents/tickets/$(ticketId)).data.hostOrgId);
+
+        allow write: if isPlatformAdmin();
+      }
+
+      // ── signoffs subcollection ───────────────────────────────────────────
+      match /signoffs/{signoffId} {
+        allow read: if isSignedIn();
+        // Contributor creates; server verifies contributor membership.
+        allow create: if isSignedIn()
+          && isOrgMember(request.resource.data.contributorOrgId);
+        allow write: if isPlatformAdmin();
+      }
+    }
+
+    // ─── agreements ──────────────────────────────────────────────────────────
+    match /agreements/{agreementId} {
+      allow read: if isSignedIn() && (
+        isOrgMember(resource.data.hostOrgId) ||
+        isOrgMember(resource.data.contributorOrgId) ||
+        isPlatformAdmin()
+      );
+      // All writes via Cloud Functions (signing updates status server-side).
+      allow write: if isPlatformAdmin();
+    }
+
+    // ─── matches (server-only writes) ─────────────────────────────────────────
+    match /matches/{matchId} {
+      allow read: if isSignedIn() && isOrgMember(resource.data.orgId);
+      // Client may flip the `dismissed` boolean on their own match row.
+      allow update: if isOrgMember(resource.data.orgId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dismissed']);
+      allow create, delete: if false;
+      allow write: if isPlatformAdmin();
+    }
+
+    // ─── badges (public read, server-only write) ─────────────────────────────
+    match /badges/{badgeId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ─── auditLog (admin-read, server-only write) ────────────────────────────
+    match /auditLog/{entryId} {
+      allow read: if isPlatformAdmin();
+      allow write: if false;
+    }
+
+    // ─── default deny ────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
