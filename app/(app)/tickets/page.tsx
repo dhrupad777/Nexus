@@ -2,160 +2,102 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, Search, MapPin, Clock } from "lucide-react";
+import { Plus, Search } from "lucide-react";
+import { TicketCard } from "@/components/TicketCard";
+import { MOCK_TICKETS } from "@/lib/data/tickets";
 
-// Mock Data
-const MOCK_TICKETS = [
-  {
-    id: "TKT-8924",
-    title: "Emergency Medical Supplies",
-    category: "Medical",
-    urgency: "Emergency",
-    phase: "Execution",
-    location: "Beirut, Lebanon",
-    deadline: "24 Oct 2023",
-    progress: 45,
-  },
-  {
-    id: "TKT-8921",
-    title: "Winter Clothing Drive",
-    category: "Clothing",
-    urgency: "High",
-    phase: "Pledging",
-    location: "Amman, Jordan",
-    deadline: "30 Oct 2023",
-    progress: 75,
-  },
-  {
-    id: "TKT-8890",
-    title: "School Rebuilding Fund",
-    category: "Infrastructure",
-    urgency: "Normal",
-    phase: "Closure",
-    location: "Gaza",
-    deadline: "12 Nov 2023",
-    progress: 95,
-  },
-  {
-    id: "TKT-8875",
-    title: "Clean Water Initiative",
-    category: "WASH",
-    urgency: "High",
-    phase: "Completed",
-    location: "Sana'a, Yemen",
-    deadline: "--",
-    progress: 100,
-  },
-  {
-    id: "TKT-8842",
-    title: "Food Relief Packages",
-    category: "Food",
-    urgency: "High",
-    phase: "Validation",
-    location: "Khartoum, Sudan",
-    deadline: "05 Nov 2023",
-    progress: 10,
-  },
-];
+const TABS = ["All", "Active", "Pending", "Closed"] as const;
 
 export default function TicketsPage() {
-  const [activeTab, setActiveTab] = useState("All");
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("All");
+  const [search, setSearch] = useState("");
 
-  const getUrgencyBadgeClass = (urgency: string) => {
-    switch (urgency) {
-      case "Emergency": return "badge-emergency";
-      case "High": return "badge-primary";
-      default: return "badge-normal";
-    }
-  };
+  const filteredTickets = MOCK_TICKETS.filter((t) => {
+    const matchesSearch =
+      !search ||
+      t.title.toLowerCase().includes(search.toLowerCase()) ||
+      t.location.toLowerCase().includes(search.toLowerCase()) ||
+      t.id.toLowerCase().includes(search.toLowerCase());
 
-  const getPhaseBadgeClass = (phase: string) => {
-    switch (phase) {
-      case "Completed": return "badge-success";
-      case "Execution": return "badge-emergency";
-      case "Pledging": return "badge-primary";
-      default: return "badge-normal";
-    }
-  };
+    if (activeTab === "Active")
+      return matchesSearch && t.ticket_status === "ACTIVE";
+    if (activeTab === "Pending")
+      return matchesSearch && t.ticket_status === "OPEN";
+    if (activeTab === "Closed")
+      return matchesSearch && t.ticket_status === "COMPLETED";
+    return matchesSearch;
+  });
 
   return (
-    <div className="stack" style={{ gap: "24px" }}>
-      {/* Header */}
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* Page header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em" }}>
-          Tickets
-        </h1>
-        <Link href="/tickets/new" className="btn btn-primary">
-          <Plus size={18} /> Raise a ticket
+        <div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: "28px", fontWeight: 700, letterSpacing: "-0.025em", color: "var(--color-text)", lineHeight: 1.15 }}>
+            Tickets
+          </h1>
+          <p style={{ fontSize: "13px", color: "var(--color-muted)", marginTop: "3px" }}>
+            {MOCK_TICKETS.length} requests across all categories
+          </p>
+        </div>
+        <Link href="/tickets/new" className="btn btn-primary" style={{ gap: "6px" }}>
+          <Plus size={16} />
+          New ticket
         </Link>
       </div>
 
-      {/* Tabs and Search */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-border)", flexWrap: "wrap", gap: "16px" }}>
-        <div className="filter-tabs" style={{ marginBottom: "-1px", borderBottom: "none" }}>
-          {["All", "Active", "Pending", "Closed"].map((tab) => (
+      {/* Controls bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: "2px", background: "var(--color-surface-2)", borderRadius: "var(--radius-md)", padding: "3px" }}>
+          {TABS.map((tab) => (
             <button
               key={tab}
-              className={`filter-tab ${activeTab === tab ? "is-active" : ""}`}
               onClick={() => setActiveTab(tab)}
+              style={{
+                padding: "5px 14px",
+                borderRadius: "9px",
+                border: "none",
+                background: activeTab === tab ? "#ffffff" : "transparent",
+                color: activeTab === tab ? "var(--color-text)" : "var(--color-muted)",
+                fontWeight: activeTab === tab ? 600 : 500,
+                fontSize: "13px",
+                cursor: "pointer",
+                boxShadow: activeTab === tab ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                transition: "all 0.15s ease",
+              }}
             >
               {tab}
             </button>
           ))}
         </div>
-        
-        <div style={{ position: "relative", width: "240px", marginBottom: "12px" }}>
-          <Search size={16} style={{ position: "absolute", left: "12px", top: "11px", color: "var(--color-muted)" }} />
-          <input 
-            type="text" 
-            placeholder="Search tickets..." 
-            className="input" 
-            style={{ paddingLeft: "36px", borderRadius: "var(--radius-pill)" }}
+
+        {/* Search */}
+        <div style={{ position: "relative", width: "220px" }}>
+          <Search size={14} style={{ position: "absolute", left: "11px", top: "50%", transform: "translateY(-50%)", color: "var(--color-placeholder)", pointerEvents: "none" }} />
+          <input
+            type="text"
+            placeholder="Search…"
+            className="input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: "32px", height: "34px", fontSize: "13px", borderRadius: "var(--radius-md)" }}
           />
         </div>
       </div>
 
-      {/* Tickets Grid */}
-      <div className="tickets-grid">
-        {MOCK_TICKETS.map((ticket) => (
-          <Link href={`/tickets/${ticket.id}`} key={ticket.id} style={{ textDecoration: "none", color: "inherit", display: "block" }}>
-            <div className="ticket-card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
-                <span className="badge badge-normal num" style={{ fontSize: "11px" }}>{ticket.id}</span>
-                <span className={`badge ${getUrgencyBadgeClass(ticket.urgency)}`}>{ticket.urgency}</span>
-              </div>
-              
-              <h3 className="ticket-card-title">{ticket.title}</h3>
-              
-              <div className="row muted-text" style={{ fontSize: "13px", marginTop: "4px" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <MapPin size={14} /> {ticket.location}
-                </span>
-                <span className="story-sub-dot">•</span>
-                <span>{ticket.category}</span>
-              </div>
-              
-              <div className="row muted-text" style={{ fontSize: "13px" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <Clock size={14} /> {ticket.deadline}
-                </span>
-              </div>
-              
-              <div className="stack-sm" style={{ marginTop: "12px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px" }}>
-                  <span className={`badge ${getPhaseBadgeClass(ticket.phase)}`} style={{ padding: "2px 8px", fontSize: "11px" }}>
-                    {ticket.phase}
-                  </span>
-                  <span className="num" style={{ fontWeight: 600 }}>{ticket.progress}%</span>
-                </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${ticket.progress}%` }}></div>
-                </div>
-              </div>
-            </div>
-          </Link>
+      {/* Grid */}
+      <div className="tkt-grid">
+        {filteredTickets.map((ticket) => (
+          <TicketCard key={ticket.id} ticket={ticket} />
         ))}
       </div>
+
+      {filteredTickets.length === 0 && (
+        <div style={{ textAlign: "center", padding: "64px 24px", color: "var(--color-muted)", fontSize: "14px" }}>
+          No tickets match your filter.
+        </div>
+      )}
     </div>
   );
 }

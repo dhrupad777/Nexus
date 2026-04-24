@@ -6,17 +6,24 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import { auth } from "@/lib/firebase/client";
 import { signOut as firebaseSignOut } from "firebase/auth";
 import Link from "next/link";
-import { Home, Ticket, User, LogOut, Menu, X } from "lucide-react";
+import { Home, Ticket, User, LogOut, ChevronDown, Menu, X } from "lucide-react";
 
 export default function AppShellLayout({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
+
+  // Close menus on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setUserMenuOpen(false);
+  }, [pathname]);
 
   if (loading || !user) {
     return (
@@ -28,7 +35,7 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
 
   const navLinks = [
     { name: "Dashboard", href: "/dashboard", icon: Home },
-    { name: "Tickets", href: "/tickets", icon: Ticket },
+    { name: "Tickets",   href: "/tickets",   icon: Ticket },
     { name: "Org Profile", href: "/profile", icon: User },
   ];
 
@@ -37,85 +44,113 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
     router.push("/login");
   };
 
+  const initials = user.displayName
+    ? user.displayName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+    : (user.email?.charAt(0).toUpperCase() ?? "U");
+
   return (
-    <div className="app-shell">
-      {/* Mobile Topbar */}
-      <div className="app-topbar-mobile">
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "20px", letterSpacing: "-0.02em" }}>
-          NEXUS<span className="home-logo-dot">.</span>
-        </div>
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="btn-ghost" style={{ padding: "8px", border: "none" }}>
-          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </div>
+    <div className="app-shell-top">
+      {/* ── Top Navigation Bar ── */}
+      <header className="app-topnav">
+        <div className="app-topnav-inner">
 
-      {/* Sidebar */}
-      <aside className={`app-sidebar ${isSidebarOpen ? "is-open" : ""}`}>
-        <div style={{ padding: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "24px", letterSpacing: "-0.02em" }}>
+          {/* Logo */}
+          <Link href="/dashboard" className="app-topnav-logo">
             NEXUS<span className="home-logo-dot">.</span>
-          </div>
-          {isSidebarOpen && (
-            <button onClick={() => setIsSidebarOpen(false)} className="btn-ghost" style={{ padding: "4px", border: "none", display: "flex", alignItems: "center" }}>
-              <X size={20} />
-            </button>
-          )}
-        </div>
+          </Link>
 
-        <nav style={{ flex: 1, padding: "0 16px", display: "flex", flexDirection: "column", gap: "4px" }}>
-          {navLinks.map((link) => {
-            const isActive = pathname === link.href || pathname.startsWith(link.href + '/');
-            const Icon = link.icon;
-            return (
-              <Link
-                key={link.name}
-                href={link.href}
-                onClick={() => setIsSidebarOpen(false)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "10px 16px",
-                  borderRadius: "var(--radius-md)",
-                  color: isActive ? "var(--color-primary)" : "var(--color-text-2)",
-                  background: isActive ? "var(--color-primary-soft)" : "transparent",
-                  fontWeight: isActive ? 600 : 500,
-                  fontSize: "14px",
-                  textDecoration: "none",
-                  transition: "all 0.15s ease",
-                }}
+          {/* Nav Links — desktop */}
+          <nav className="app-topnav-links">
+            {navLinks.map((link) => {
+              const isActive =
+                pathname === link.href || pathname.startsWith(link.href + "/");
+              const Icon = link.icon;
+              return (
+                <Link
+                  key={link.name}
+                  href={link.href}
+                  className={`app-topnav-link${isActive ? " is-active" : ""}`}
+                >
+                  <Icon size={15} strokeWidth={isActive ? 2.2 : 1.8} />
+                  {link.name}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Right side: user pill + hamburger */}
+          <div className="app-topnav-right">
+            {/* User dropdown */}
+            <div className="app-topnav-user-wrap">
+              <button
+                className="app-topnav-user-btn"
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
               >
-                <Icon size={18} />
-                {link.name}
-              </Link>
-            );
-          })}
-        </nav>
+                <div className="app-topnav-avatar">{initials}</div>
+                <span className="app-topnav-user-name">
+                  {user.displayName ?? user.email?.split("@")[0] ?? "Account"}
+                </span>
+                <ChevronDown size={14} strokeWidth={2} className={`app-topnav-chevron${userMenuOpen ? " is-open" : ""}`} />
+              </button>
 
-        <div style={{ padding: "20px 16px", borderTop: "1px solid var(--color-border)", display: "flex", flexDirection: "column", gap: "12px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "0 8px" }}>
-            <div className="chat-avatar" style={{ width: "32px", height: "32px", fontSize: "14px" }}>
-              {user.email?.charAt(0).toUpperCase() || "U"}
+              {userMenuOpen && (
+                <div className="app-topnav-dropdown">
+                  <div className="app-topnav-dropdown-user">
+                    <span className="app-topnav-dropdown-name">
+                      {user.displayName ?? "User"}
+                    </span>
+                    <span className="app-topnav-dropdown-email">{user.email}</span>
+                  </div>
+                  <div className="app-topnav-dropdown-divider" />
+                  <button onClick={handleSignOut} className="app-topnav-dropdown-item">
+                    <LogOut size={14} />
+                    Sign out
+                  </button>
+                </div>
+              )}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <span style={{ fontSize: "13px", fontWeight: 600, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
-                {user.displayName || "User"}
-              </span>
-              <span style={{ fontSize: "11px", color: "var(--color-muted)", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
-                {user.email}
-              </span>
-            </div>
+
+            {/* Hamburger — mobile only */}
+            <button
+              className="app-topnav-hamburger"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
-          <button onClick={handleSignOut} className="btn btn-ghost" style={{ justifyContent: "flex-start", width: "100%", border: "none", padding: "10px 16px", color: "var(--color-muted)" }}>
-            <LogOut size={16} />
-            Sign Out
-          </button>
         </div>
-      </aside>
 
-      {/* Main Content */}
-      <main className="app-main">
-        <div style={{ padding: "32px 24px", maxWidth: "1200px", margin: "0 auto", width: "100%" }}>
+        {/* Mobile nav drawer */}
+        {mobileMenuOpen && (
+          <div className="app-topnav-mobile-menu">
+            {navLinks.map((link) => {
+              const isActive =
+                pathname === link.href || pathname.startsWith(link.href + "/");
+              const Icon = link.icon;
+              return (
+                <Link
+                  key={link.name}
+                  href={link.href}
+                  className={`app-topnav-mobile-link${isActive ? " is-active" : ""}`}
+                >
+                  <Icon size={16} />
+                  {link.name}
+                </Link>
+              );
+            })}
+            <div className="app-topnav-dropdown-divider" style={{ margin: "8px 0" }} />
+            <button onClick={handleSignOut} className="app-topnav-mobile-link" style={{ color: "var(--color-muted)" }}>
+              <LogOut size={16} />
+              Sign out
+            </button>
+          </div>
+        )}
+      </header>
+
+      {/* ── Page Content ── */}
+      <main className="app-main-top">
+        <div style={{ maxWidth: "1200px", margin: "0 auto", width: "100%", padding: "40px 24px" }}>
           {children}
         </div>
       </main>

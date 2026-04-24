@@ -1,20 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@/lib/auth/AuthProvider";
-import { NexusLogo } from "./NexusLogo";
+import { usePathname } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 
 export function HomeTopbar() {
-  const { user, loading } = useAuth();
-  const joinHref = loading ? "/login" : user ? "/onboard" : "/login?next=/onboard";
+  const pathname = usePathname();
+
   return (
-    <header className="home-topbar">
-      <Link href="/" style={{ textDecoration: "none" }}>
-        <NexusLogo size="sm" />
-      </Link>
-      <Link href={joinHref} className="btn btn-primary" style={{ padding: "8px 14px" }}>
-        Join us
-      </Link>
+    <header className="public-topnav">
+      <div className="public-topnav-inner">
+
+        {/* Left — nav links */}
+        <nav className="public-topnav-left">
+          <Link
+            href="/"
+            className={`public-topnav-link${pathname === "/" ? " is-active" : ""}`}
+          >
+            Home
+          </Link>
+          <Link
+            href="/about"
+            className={`public-topnav-link${pathname === "/about" ? " is-active" : ""}`}
+          >
+            About
+          </Link>
+        </nav>
+
+        {/* Center — Logo */}
+        <Link href="/" className="public-topnav-logo">
+          NEXUS<span className="home-logo-dot">.</span>
+        </Link>
+
+        {/* Right — CTA */}
+        <div className="public-topnav-right">
+          <Link href="/login" className="btn btn-primary public-topnav-cta">
+            Join with us
+            <ArrowRight size={16} strokeWidth={2.5} aria-hidden />
+          </Link>
+        </div>
+
+      </div>
     </header>
   );
 }

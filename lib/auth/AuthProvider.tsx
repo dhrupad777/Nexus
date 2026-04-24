@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
+import { onIdTokenChanged, signOut, type User } from "firebase/auth";
 import { auth, getAppCheckClient } from "@/lib/firebase/client";
 
 type AuthCtx = {
@@ -21,18 +22,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // App Check must initialize on the client before any secured call.
     getAppCheckClient();
 
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
+    const unsub = onIdTokenChanged(auth, async (u) => {
+      try {
+        if (!u) {
+          setUser(null);
+          setClaims(null);
+          return;
+        }
+
         const tokenResult = await u.getIdTokenResult();
+        setUser(u);
         setClaims({
           role: tokenResult.claims.role as string | undefined,
           orgId: tokenResult.claims.orgId as string | undefined,
         });
-      } else {
+      } catch (err) {
+        console.error("Failed to restore Firebase auth session", err);
         setClaims(null);
+        setUser(null);
+
+        if (err instanceof FirebaseError && err.code === "auth/network-request-failed") {
+          try {
+            await signOut(auth);
+          } catch (signOutErr) {
+            console.error("Failed to clear broken Firebase auth session", signOutErr);
+          }
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
     return unsub;
   }, []);

@@ -130,9 +130,10 @@ export function FeaturedStoryShow() {
                   src={story.photo}
                   alt={story.photoAlt}
                   fill
-                  sizes="(min-width: 1100px) 600px, (min-width: 760px) 80vw, 100vw"
+                  sizes="(min-width: 1100px) 1080px, 100vw"
                   priority={i === 0}
                 />
+                <div className="story-photo-scrim" aria-hidden />
               </div>
               <div className="story-content">
                 <div className="story-meta">

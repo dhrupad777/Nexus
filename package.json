@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "next dev --hostname 0.0.0.0",
+    "dev:emulators": "npx -y firebase-tools@latest emulators:start --project buffet-493105 --only auth",
+    "dev:emulators:all": "npx -y firebase-tools@latest emulators:start --project buffet-493105 --only auth,firestore,functions,storage",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --hostname 0.0.0.0",
     "lint": "eslint",
     "test:rules": "vitest run tests/rules",
     "emu:rules": "firebase emulators:exec --only firestore \"vitest run tests/rules\""
