@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="52" viewBox="0 0 220 52" fill="none" role="img" aria-label="Nexus">
+  <defs>
+    <linearGradient id="nexusBgFull" x1="0" y1="0" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mark -->
+  <g>
+    <rect width="52" height="52" rx="12" fill="url(#nexusBgFull)"/>
+    <rect x="0.75" y="0.75" width="50.5" height="50.5" rx="11.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.18"/>
+
+    <g stroke="#FFFFFF" stroke-opacity="0.9" stroke-width="1.75" stroke-linecap="round">
+      <line x1="26" y1="26" x2="13.5" y2="14.5"/>
+      <line x1="26" y1="26" x2="38.5" y2="14.5"/>
+      <line x1="26" y1="26" x2="26"   y2="40"/>
+    </g>
+
+    <g fill="#FFFFFF">
+      <circle cx="13.5" cy="14.5" r="3.4"/>
+      <circle cx="38.5" cy="14.5" r="3.4"/>
+      <circle cx="26"   cy="40"   r="3.4"/>
+    </g>
+
+    <circle cx="26" cy="26" r="6" fill="#FFFFFF"/>
+    <circle cx="26" cy="26" r="2.6" fill="#1D4ED8"/>
+  </g>
+
+  <!-- Wordmark -->
+  <g transform="translate(68, 0)">
+    <text
+      x="0"
+      y="35"
+      font-family="Outfit, Inter, 'Helvetica Neue', Arial, sans-serif"
+      font-size="30"
+      font-weight="800"
+      letter-spacing="-1"
+      fill="#0B0D10"
+    >NEXUS<tspan fill="#2563EB">.</tspan></text>
+  </g>
+</svg>

@@ -6,15 +6,26 @@ First, run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This starts Next.js and the local Firebase Auth emulator used by login. Open
+[http://localhost:3000](http://localhost:3000) or
+[http://127.0.0.1:3000](http://127.0.0.1:3000) with your browser.
+
+If you only want the web app without emulators, use:
+
+```bash
+npm run dev:web
+```
+
+If you want the full Firebase emulator stack, use:
+
+```bash
+npm run dev:emulators:all
+```
+
+Note: the Firestore emulator requires Java to be installed locally. The default
+`npm run dev` flow starts auth only so login works even without Java.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

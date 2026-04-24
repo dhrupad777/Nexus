@@ -8,21 +8,31 @@ import {
   sendPasswordResetEmail,
   type UserCredential,
 } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db, googleProvider } from "@/lib/firebase/client";
 
 /** Ensure users/{uid} exists. Called after every sign-in. */
 async function ensureUserDoc(cred: UserCredential) {
-  const ref = doc(db, "users", cred.user.uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
-      email: cred.user.email,
-      displayName: cred.user.displayName ?? null,
-      role: "ORG_ADMIN",
-      orgId: null,
-      createdAt: serverTimestamp(),
-    });
+  try {
+    const ref = doc(db, "users", cred.user.uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        email: cred.user.email,
+        displayName: cred.user.displayName ?? null,
+        role: "ORG_ADMIN",
+        orgId: null,
+        createdAt: serverTimestamp(),
+      });
+    }
+  } catch (err) {
+    if (err instanceof FirebaseError) {
+      console.warn("Unable to sync users/{uid} during sign-in", err.code, err.message);
+      return;
+    }
+
+    console.warn("Unable to sync users/{uid} during sign-in", err);
   }
 }
 
