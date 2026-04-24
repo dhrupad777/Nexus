@@ -38,7 +38,8 @@ export const raiseTicket = onCall(async (request) => {
     if (!orgSnap.exists) {
       throw new HttpsError("failed-precondition", "Organization not found.");
     }
-    if (orgSnap.data()!.status !== "ACTIVE") {
+    const orgData = orgSnap.data()!;
+    if (orgData.status !== "ACTIVE") {
       throw new HttpsError(
         "failed-precondition",
         "Only ACTIVE organizations can raise tickets.",
@@ -48,7 +49,8 @@ export const raiseTicket = onCall(async (request) => {
     const now = Date.now();
     const rapid = input.urgency === "EMERGENCY";
 
-    // Seed per-need progressPct from hostSelfPledge.
+    // Seed per-need progressPct from hostSelfPledge. `subtype` (optional) flows
+    // through; the onTicketCreated embedding trigger reads it.
     const needs = input.needs.map((n) => ({
       ...n,
       progressPct: Math.min(100, n.hostSelfPledge.pctOfNeed),
@@ -66,9 +68,17 @@ export const raiseTicket = onCall(async (request) => {
             ) / totalValuation * 100,
           );
 
+    // Denormalize host snapshot — name + type only. Status is implicit ACTIVE
+    // (gate above) and reliability is read from the org doc when needed.
+    const host = {
+      name: String(orgData.name ?? ""),
+      type: orgData.type as "NGO" | "ORG",
+    };
+
     const ticketRef = db.collection("tickets").doc();
     await ticketRef.set({
       hostOrgId: orgId,
+      host,
       title: input.title,
       description: input.description,
       category: input.category,
@@ -82,8 +92,12 @@ export const raiseTicket = onCall(async (request) => {
       phase: "OPEN_FOR_CONTRIBUTIONS",
       progressPct,
       advancedEarly: false,
+      // Dashboard Active Tickets feed queries on this single field.
+      participantOrgIds: [orgId],
+      contributorCount: 0,
       createdAt: now,
       phaseChangedAt: now,
+      lastUpdatedAt: now,
       closedAt: null,
     });
 

@@ -74,10 +74,16 @@ export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
     setBooted(true);
   }, [type, form]);
 
-  const neededDocs = requiredDocs(type);
+  const effectiveType = type ?? partialData.type;
+  const neededDocs = requiredDocs(effectiveType);
 
   async function onSubmit(values: FormValues) {
     if (!user) return toast.error("Sign in first.");
+    if (!effectiveType) {
+      toast.error("Pick NGO or Organization first.");
+      router.replace("/onboard");
+      return;
+    }
     const anyDoc = neededDocs.some((d) => docs[d]);
     if (!anyDoc) {
       toast.error("Attach at least one document photo to continue.");
@@ -85,7 +91,7 @@ export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
     }
 
     const data: OnboardingData = {
-      type,
+      type: effectiveType,
       legalName: values.legalName,
       email: values.email,
       phone: values.phone,
@@ -150,7 +156,7 @@ export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
       <div className="onboarding-container stack">
         <div className="onboarding-header">
           <div>
-            <h1 className="onboarding-title">Register your {type === "NGO" ? "NGO" : type === "ORG" ? "organization" : "entity"}</h1>
+            <h1 className="onboarding-title">Register your {effectiveType === "NGO" ? "NGO" : effectiveType === "ORG" ? "organization" : "entity"}</h1>
             <p className="muted-text">Fill this out &mdash; your chat progress is prefilled.</p>
           </div>
           <Link href="/onboard/chat" className="btn btn-ghost">Use chat instead</Link>
@@ -240,7 +246,7 @@ export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
       <DocPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        type={type}
+        type={effectiveType}
         uid={user.uid}
         uploaded={docs}
         onUploaded={handleUploaded}

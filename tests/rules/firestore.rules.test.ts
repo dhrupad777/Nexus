@@ -330,7 +330,21 @@ describe("organizations — fresh user self-create branch", () => {
 });
 
 describe("resources — status + embedding locks", () => {
-  it("owner CANNOT write embedding on create", async () => {
+  it("owner CANNOT create a resource client-side — must go through createResource callable", async () => {
+    await assertFails(
+      setDoc(doc(asOrgA(env), "resources/r1"), {
+        orgId: ORG_A,
+        category: "MATERIAL",
+        title: "t", quantity: 1, unit: "u", valuationINR: 1,
+        terms: { availableFrom: 1, availableUntil: 2, conditions: "" },
+        geo: { lat: 0, lng: 0, adminRegion: "IN", operatingAreas: [], serviceRadiusKm: 0 },
+        emergencyContract: { enabled: false, emergencyCategories: [], maxQuantityPerTicket: 0, autoNotify: false },
+        status: "AVAILABLE",
+      }),
+    );
+  });
+
+  it("owner CANNOT write embedding on create (covered by blanket client-create deny)", async () => {
     await assertFails(
       setDoc(doc(asOrgA(env), "resources/r1"), {
         orgId: ORG_A,
@@ -342,6 +356,26 @@ describe("resources — status + embedding locks", () => {
         status: "AVAILABLE",
         embedding: new Array(768).fill(0),
       }),
+    );
+  });
+
+  it("owner CANNOT flip embeddingStatus on update", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "resources/r-embed"), {
+        orgId: ORG_A, category: "MATERIAL",
+        title: "t", quantity: 1, unit: "u", valuationINR: 1,
+        terms: { availableFrom: 1, availableUntil: 2, conditions: "" },
+        geo: { lat: 0, lng: 0, adminRegion: "IN", operatingAreas: [], serviceRadiusKm: 0 },
+        emergencyContract: { enabled: false, emergencyCategories: [], maxQuantityPerTicket: 0, autoNotify: false },
+        status: "AVAILABLE",
+        embeddingStatus: "pending",
+      });
+    });
+    await assertFails(
+      updateDoc(doc(asOrgA(env), "resources/r-embed"), { embeddingStatus: "ok" }),
+    );
+    await assertFails(
+      updateDoc(doc(asOrgA(env), "resources/r-embed"), { embeddingVersion: "text-embedding-004" }),
     );
   });
 

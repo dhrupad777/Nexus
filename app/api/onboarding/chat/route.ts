@@ -104,7 +104,7 @@ async function callGemini(
       systemInstruction,
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
-      temperature: 0.4,
+      temperature: 0.85,
     },
   });
   return resp.text;
