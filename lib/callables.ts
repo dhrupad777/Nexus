@@ -2,7 +2,7 @@
 
 import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { functions } from "@/lib/firebase/client";
-import type { RaiseTicketInput } from "@/lib/schemas";
+import type { PledgeInput, RaiseTicketInput, ResourceClientWrite } from "@/lib/schemas";
 
 /** Typed wrapper around a callable. Region is pinned in client.ts. */
 function make<Req, Res>(name: string) {
@@ -17,3 +17,13 @@ export const callRaiseTicket = make<
   RaiseTicketInput,
   { ticketId: string; phase: "OPEN_FOR_CONTRIBUTIONS"; rapid: boolean }
 >("raiseTicket");
+
+export const callCreateResource = make<
+  ResourceClientWrite,
+  { resourceId: string }
+>("createResource");
+
+export const callPledge = make<
+  PledgeInput,
+  { contributionId: string; progressPct: number }
+>("pledge");

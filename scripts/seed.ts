@@ -11,6 +11,7 @@
  */
 import { applicationDefault, cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 
 const LIVE = process.argv.includes("--live");
 const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "buffet-493105";
@@ -23,6 +24,7 @@ if (!getApps().length) {
   });
 }
 const db = getFirestore();
+const auth = getAuth();
 
 if (!LIVE && !process.env.FIRESTORE_EMULATOR_HOST) {
   console.error(
@@ -121,10 +123,12 @@ const tickets = [
     urgency: "NORMAL",
     rapid: false,
     needs: [
+      // need[0] SERVICE filled by apollo's contribution (seeded below).
       { resourceCategory: "SERVICE",         quantity: 5,  unit: "days",  valuationINR: 125_000,
         hostSelfPledge: { quantity: 0, valuationINR: 0, pctOfNeed: 0 }, progressPct: 100 },
+      // need[1] VOLUNTEER_HOURS filled by host self-pledge (sahayata's own staff).
       { resourceCategory: "VOLUNTEER_HOURS", quantity: 200, unit: "hours", valuationINR: 100_000,
-        hostSelfPledge: { quantity: 0, valuationINR: 0, pctOfNeed: 0 }, progressPct: 100 },
+        hostSelfPledge: { quantity: 200, valuationINR: 100_000, pctOfNeed: 100 }, progressPct: 100 },
     ],
     geo: { lat: 12.972, lng: 77.594, adminRegion: "Bengaluru, KA", operatingAreas: ["Bengaluru"] },
     deadline: now + 10 * DAY,
@@ -139,16 +143,19 @@ const tickets = [
     category: "DISASTER",
     urgency: "EMERGENCY",
     rapid: true,
+    // Demo-tuned: only host self-pledge is in. Kirana shows up as a rapid match
+    // on the dashboard and can pledge live during the demo to drive progress.
     needs: [
       { resourceCategory: "FOOD_KIT", quantity: 1000, unit: "kits",   valuationINR: 500_000,
-        hostSelfPledge: { quantity: 100, valuationINR: 50_000, pctOfNeed: 10 }, progressPct: 35 },
+        hostSelfPledge: { quantity: 100, valuationINR: 50_000, pctOfNeed: 10 }, progressPct: 10 },
       { resourceCategory: "VEHICLE",  quantity: 4,    unit: "trucks", valuationINR: 200_000,
-        hostSelfPledge: { quantity: 0, valuationINR: 0, pctOfNeed: 0 }, progressPct: 75 },
+        hostSelfPledge: { quantity: 0, valuationINR: 0, pctOfNeed: 0 }, progressPct: 0 },
     ],
     geo: { lat: 18.988, lng: 73.117, adminRegion: "Panvel, MH", operatingAreas: ["Panvel"] },
     deadline: now + 2 * DAY,
     phase: "OPEN_FOR_CONTRIBUTIONS",
-    progressPct: 45,
+    // Valuation-weighted: (10*500 + 0*200) / 700 ≈ 7.
+    progressPct: 7,
   },
   {
     id: "t-closed-1",
@@ -195,6 +202,116 @@ const badges = [
   { orgId: "org-apollo-hosp", ticketId: "t-closed-2", ticketTitle: "Cyclone Mandous — mobile clinics", contributionSummary: "18 doctor-days delivered",         closedAt: now - 20 * DAY, publicSlug: "apollo-mandous" },
 ];
 
+/**
+ * Contributions to seed under tickets/{ticketId}/contributions/{contribId}.
+ * IDs are deterministic so re-running the seed overwrites cleanly.
+ */
+const contributions = [
+  // t-exec-1 — apollo provided 5 days of OPD service (Flow A path).
+  {
+    ticketId: "t-exec-1",
+    id: "c-exec-apollo",
+    contributorOrgId: "org-apollo-hosp",
+    needIndex: 0,
+    offered: { kind: "SERVICE", quantity: 5, unit: "days", valuationINR: 125_000, pctOfNeed: 100, notes: "Free OPD camp" },
+    status: "COMMITTED",
+    commitPath: "AGREEMENT_FIRST",
+    requestId: "seed-c-exec-apollo-r1",
+    createdAt: now - 4 * DAY,
+    committedAt: now - 3 * DAY,
+  },
+  // t-closed-1 — taj manufactured + delivered 400 kits.
+  {
+    ticketId: "t-closed-1",
+    id: "c-closed1-taj",
+    contributorOrgId: "org-taj-manufacturing",
+    needIndex: 0,
+    offered: { kind: "MATERIAL", quantity: 400, unit: "kits", valuationINR: 160_000, pctOfNeed: 80, notes: "School supply kits" },
+    status: "SIGNED_OFF",
+    commitPath: "AGREEMENT_FIRST",
+    requestId: "seed-c-closed1-taj-r1",
+    createdAt: now - 12 * DAY,
+    committedAt: now - 10 * DAY,
+    signedOffAt: now - 5 * DAY,
+  },
+  // t-closed-2 — apollo delivered 18 doctor-days during the cyclone.
+  {
+    ticketId: "t-closed-2",
+    id: "c-closed2-apollo",
+    contributorOrgId: "org-apollo-hosp",
+    needIndex: 0,
+    offered: { kind: "SERVICE", quantity: 18, unit: "days", valuationINR: 600_000, pctOfNeed: 100, notes: "18 doctor-days mobile clinic" },
+    status: "SIGNED_OFF",
+    commitPath: "PLEDGE_FIRST",
+    requestId: "seed-c-closed2-apollo-r1",
+    createdAt: now - 28 * DAY,
+    committedAt: now - 28 * DAY,
+    signedOffAt: now - 20 * DAY,
+  },
+];
+
+/**
+ * matches/{ticketId__orgId} — pre-seeded so the dashboard's Recommended panel
+ * shows real cards immediately. In production these are written by the
+ * onTicketCreated trigger (Flow A) or onRapidTicketCreated (Flow B).
+ */
+const matches = [
+  // t-open-1 (MANUFACTURING need by ngo-ashraya in Dharwad) → recommend taj.
+  {
+    id: "t-open-1__org-taj-manufacturing",
+    ticketId: "t-open-1",
+    orgId: "org-taj-manufacturing",
+    topResourceId: "r1",
+    score: 0.78,
+    semanticScore: 0.82,
+    reason: "You listed MANUFACTURING within 0 km of this ticket.",
+    bestNeedIndex: 0,
+    // need quantity 300, host pre-pledged 50% so 150 kits remaining; resource has 400 capacity → cap = 150.
+    maxContributionPossible: 150,
+    contributionFeasibility: true,
+    contributionImpactPct: 100,
+    geoDistanceKm: 0.3,
+    rapidBroadcast: false,
+    surfaced: false,
+    dismissed: false,
+    createdAt: now - 4 * DAY,
+  },
+  // t-rapid-1 (FOOD_KIT + VEHICLE) → broadcast match for kirana (only org with emergency-enabled FOOD_KIT/VEHICLE).
+  {
+    id: "t-rapid-1__org-kirana-logistics",
+    ticketId: "t-rapid-1",
+    orgId: "org-kirana-logistics",
+    topResourceId: "r6",
+    reason: "Emergency broadcast: you have FOOD_KIT within 35 km.",
+    bestNeedIndex: 0,
+    // need quantity 1000, host pre-pledged 10% so 900 kits remaining; resource has 500/week capacity → cap = 500.
+    maxContributionPossible: 500,
+    contributionFeasibility: true,
+    contributionImpactPct: 55.6,
+    geoDistanceKm: 35,
+    rapidBroadcast: true,
+    surfaced: false,
+    dismissed: false,
+    createdAt: now - 1 * DAY,
+  },
+];
+
+/**
+ * Auth users — one per seeded org so you can sign in via /login during demos.
+ * Email pattern: <orgId>@nexus.test, password: `password`. Custom claims:
+ * { role: "ORG_ADMIN", orgId: <id> } match what `approveOrg` sets in prod.
+ *
+ * Created via the Auth Emulator (admin SDK auto-targets when
+ * FIREBASE_AUTH_EMULATOR_HOST is set). Skipped on --live.
+ */
+const authUsers = orgs.map((o) => ({
+  uid: `seed-${o.id}`,
+  email: `${o.id}@nexus.test`,
+  password: "password",
+  displayName: o.name,
+  claims: { role: "ORG_ADMIN" as const, orgId: o.id },
+}));
+
 async function run() {
   console.log(`Seeding ${LIVE ? "LIVE (" + projectId + ")" : "EMULATOR"}…`);
 
@@ -231,12 +348,35 @@ async function run() {
         autoNotify: Boolean((r as { emergency?: boolean }).emergency),
       },
       status: "AVAILABLE",
+      embeddingVersion: null,
+      embeddingStatus: "pending",
+      createdAt: now - 60 * DAY,
     });
   }
 
+  // Index orgs for the host-snapshot denorm + which orgs are participants.
+  const orgById = new Map(orgs.map((o) => [o.id, o]));
+  // Build participant sets from seeded contributions per ticket.
+  const participantsByTicket = new Map<string, Set<string>>();
+  for (const t of tickets) participantsByTicket.set(t.id, new Set([t.hostOrgId]));
+  for (const c of contributions) {
+    participantsByTicket.get(c.ticketId)?.add(c.contributorOrgId);
+  }
+  const contributorCountFor = (ticketId: string, hostOrgId: string) => {
+    const set = participantsByTicket.get(ticketId);
+    if (!set) return 0;
+    let n = 0;
+    for (const id of set) if (id !== hostOrgId) n++;
+    return n;
+  };
+
   for (const t of tickets) {
+    const hostOrg = orgById.get(t.hostOrgId)!;
+    const participants = Array.from(participantsByTicket.get(t.id) ?? new Set([t.hostOrgId]));
     batch.set(db.collection("tickets").doc(t.id), {
       hostOrgId: t.hostOrgId,
+      // Denormalized host snapshot — drives the ticket card without a JOIN.
+      host: { name: hostOrg.name, type: hostOrg.type },
       title: t.title,
       description: t.description,
       category: t.category,
@@ -248,9 +388,53 @@ async function run() {
       phase: t.phase,
       progressPct: t.progressPct,
       advancedEarly: false,
+      // Dashboard's Active Tickets feed queries on this single field.
+      participantOrgIds: participants,
+      contributorCount: contributorCountFor(t.id, t.hostOrgId),
       createdAt: now - 5 * DAY,
       phaseChangedAt: now - 2 * DAY,
+      // Most recently active tickets float to the top of the Active feed.
+      lastUpdatedAt: (t as { closedAt?: number }).closedAt ?? now - 1 * DAY,
       closedAt: (t as { closedAt?: number }).closedAt ?? null,
+      embeddingVersion: null,
+      embeddingStatus: "pending",
+    });
+  }
+
+  for (const c of contributions) {
+    batch.set(
+      db.collection("tickets").doc(c.ticketId).collection("contributions").doc(c.id),
+      {
+        contributorOrgId: c.contributorOrgId,
+        needIndex: c.needIndex,
+        offered: c.offered,
+        status: c.status,
+        commitPath: c.commitPath,
+        requestId: c.requestId,
+        createdAt: c.createdAt,
+        ...(c.committedAt !== undefined ? { committedAt: c.committedAt } : {}),
+        ...(c.signedOffAt !== undefined ? { signedOffAt: c.signedOffAt } : {}),
+      },
+    );
+  }
+
+  for (const m of matches) {
+    batch.set(db.collection("matches").doc(m.id), {
+      ticketId: m.ticketId,
+      orgId: m.orgId,
+      topResourceId: m.topResourceId,
+      ...(m.score !== undefined ? { score: m.score } : {}),
+      ...(m.semanticScore !== undefined ? { semanticScore: m.semanticScore } : {}),
+      reason: m.reason,
+      bestNeedIndex: m.bestNeedIndex,
+      maxContributionPossible: m.maxContributionPossible,
+      contributionFeasibility: m.contributionFeasibility,
+      contributionImpactPct: m.contributionImpactPct,
+      geoDistanceKm: m.geoDistanceKm,
+      rapidBroadcast: m.rapidBroadcast,
+      surfaced: m.surfaced,
+      dismissed: m.dismissed,
+      createdAt: m.createdAt,
     });
   }
 
@@ -260,8 +444,38 @@ async function run() {
 
   await batch.commit();
   console.log(
-    `Done. Orgs:${orgs.length}  Resources:${resources.length}  Tickets:${tickets.length}  Badges:${badges.length}`,
+    `Firestore seeded. Orgs:${orgs.length}  Resources:${resources.length}  Tickets:${tickets.length}  Contributions:${contributions.length}  Matches:${matches.length}  Badges:${badges.length}`,
   );
+
+  // ── Auth users (skipped on --live; admin SDK + claims is destructive in prod) ──
+  if (!LIVE) {
+    let usersCreated = 0;
+    for (const u of authUsers) {
+      try {
+        await auth.deleteUser(u.uid).catch(() => {/* ok if missing */});
+        await auth.createUser({
+          uid: u.uid,
+          email: u.email,
+          password: u.password,
+          displayName: u.displayName,
+          emailVerified: true,
+        });
+        await auth.setCustomUserClaims(u.uid, u.claims);
+        // Mirror the doc that AuthProvider's first-sign-in path would create.
+        await db.collection("users").doc(u.uid).set({
+          orgId: u.claims.orgId,
+          role: u.claims.role,
+          email: u.email,
+          createdAt: now,
+        });
+        usersCreated++;
+      } catch (err) {
+        console.warn(`auth user ${u.email} failed:`, err instanceof Error ? err.message : err);
+      }
+    }
+    console.log(`Auth users created: ${usersCreated}/${authUsers.length}.`);
+    console.log(`Sign in pattern: <orgId>@nexus.test  /  password   (e.g. ngo-ashraya@nexus.test)`);
+  }
   // unused import guard
   void FieldValue;
 }

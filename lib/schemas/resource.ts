@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GeoSchema, ResourceCategory } from "./common";
+import { EmbeddingStatus, GeoSchema, ResourceCategory } from "./common";
 
 export const ResourceStatus = z.enum(["AVAILABLE", "RESERVED", "DEPLETED"]);
 export type ResourceStatus = z.infer<typeof ResourceStatus>;
@@ -28,8 +28,27 @@ export const ResourceSchema = z.object({
   }),
   emergencyContract: EmergencyContractSchema,
   status: ResourceStatus.default("AVAILABLE"),
-  // embedding is server-written (Vertex text-embedding-004 → 768d)
+  // Server-written lifecycle — never set by client. Embedding (768d) lives here
+  // on success; absent during pending/failed states.
+  embeddingVersion: z.string().nullable().optional(),
+  embeddingStatus: EmbeddingStatus.optional(),
 });
 export type Resource = z.infer<typeof ResourceSchema>;
 
-export const ResourceClientWriteSchema = ResourceSchema; // embedding not in shape
+/**
+ * Explicit safe subset for client writes — omits all server-written lifecycle
+ * fields, adds a client-generated requestId for idempotency. Callable + rules
+ * both enforce this shape.
+ */
+export const ResourceClientWriteSchema = ResourceSchema.omit({
+  orgId: true,          // set from request.auth, not the body
+  status: true,         // server sets AVAILABLE on create, later driven by contributions
+  embeddingVersion: true,
+  embeddingStatus: true,
+}).extend({
+  requestId: z.string().min(8),
+});
+/** After zod defaults resolve — shape sent to the callable. */
+export type ResourceClientWrite = z.infer<typeof ResourceClientWriteSchema>;
+/** Pre-defaults shape — used by the react-hook-form form type. */
+export type ResourceClientWriteInput = z.input<typeof ResourceClientWriteSchema>;

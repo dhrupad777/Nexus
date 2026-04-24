@@ -50,3 +50,12 @@ export const RequestIdSchema = z
 
 /** Vector dim matches text-embedding-004 (768). Server-written only. */
 export const EmbeddingSchema = z.array(z.number()).length(768);
+
+export const EmbeddingStatus = z.enum(["pending", "ok", "failed"]);
+export type EmbeddingStatus = z.infer<typeof EmbeddingStatus>;
+
+/** Shared lifecycle fields for docs that carry an embedding. Server-written. */
+export const EmbeddingLifecycleSchema = z.object({
+  embeddingVersion: z.string().nullable().optional(),
+  embeddingStatus: EmbeddingStatus.optional(),
+});

@@ -15,6 +15,11 @@ import { finalizeOrg, OnboardingDataIncompleteError } from "../_lib/finalize";
 import { ChatComposer } from "./ChatComposer";
 import { DocPicker } from "./DocPicker";
 
+function formHref(type: OrgType | undefined, stored: OrgType | undefined): string {
+  const t = type ?? stored;
+  return t ? `/onboard/form?type=${t}` : "/onboard/form";
+}
+
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
@@ -89,12 +94,20 @@ export function OnboardingChat({ type }: { type: OrgType | undefined }) {
     setDocs(loaded.docs);
 
     if (loaded.history.length === 0) {
+      const ngoVariants = [
+        "Hey 👋 I'm Nexus. Let's get your NGO on board — takes about two minutes, chat style.\n\nWhat's the legal name on your registration?",
+        "Hi there! Quick onboarding for your NGO — I'll ask a few things, you reply however you like.\n\nWhat name is it registered under?",
+        "Welcome! Happy to help you register your NGO.\n\nTo start — what's the legal name of the organization?",
+      ];
+      const orgVariants = [
+        "Hey 👋 I'm Nexus. Let's get your organization set up — chat style, should be quick.\n\nWhat's the registered legal name?",
+        "Hi! I'll help you onboard your organization in a few short questions.\n\nFirst up: the full legal name?",
+        "Welcome aboard. Quick chat-based onboarding for your company/hospital/etc.\n\nWhat's the name on your registration papers?",
+      ];
+      const neutral = "Hey 👋 Before we start — are you registering as an NGO or as an Organization?";
+      const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
       const greeting =
-        type === "NGO"
-          ? "Hey 👋 I'm the Nexus assistant. I'll help you register your NGO — just chat like normal.\n\nWhat's the legal name of your organization?"
-          : type === "ORG"
-            ? "Hey 👋 I'm the Nexus assistant. I'll help you register your organization — just chat like normal.\n\nWhat's the registered legal name?"
-            : "Hey 👋 Before we start — are you registering as an NGO or as an Organization?";
+        type === "NGO" ? pick(ngoVariants) : type === "ORG" ? pick(orgVariants) : neutral;
       const first: ChatMessage = { role: "assistant", content: greeting, at: Date.now() };
       setHistory([first]);
       saveSession({
@@ -157,14 +170,14 @@ export function OnboardingChat({ type }: { type: OrgType | undefined }) {
         setHistory(afterFallback);
         saveSession({ history: afterFallback, partialData, sessionId, docs });
         toast.info("Switching to the form view.");
-        router.push("/onboard/form");
+        router.push(formHref(type, partialData.type));
         return;
       }
 
       const parsed = OnboardingTurnOutputSchema.safeParse(json.output);
       if (!parsed.success) {
         toast.error("Unexpected response — opening the form.");
-        router.push("/onboard/form");
+        router.push(formHref(type, partialData.type));
         return;
       }
 
@@ -255,7 +268,7 @@ export function OnboardingChat({ type }: { type: OrgType | undefined }) {
           </span>
         </div>
         <div className="chat-topbar-actions">
-          <Link href="/onboard/form" className="chat-switch-link">Form</Link>
+          <Link href={formHref(type, partialData.type)} className="chat-switch-link">Form</Link>
         </div>
       </header>
 

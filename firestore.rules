@@ -93,15 +93,18 @@ service cloud.firestore {
       // Resource listings are public for matching.
       allow read: if true;
 
-      // Create: signed in, orgId matches caller, no embedding.
-      allow create: if isOrgMember(request.resource.data.orgId)
-        && !('embedding' in request.resource.data);
+      // Create is callable-only: the `createResource` callable gates on
+      // org.status === 'ACTIVE' and runs via admin SDK (bypasses rules).
+      // Client-direct create would skip that ACTIVE gate, so deny it here.
 
-      // Update: resource owner, but status transitions AVAILABLE→RESERVED→DEPLETED
-      // are server-only (driven by contribution commits).
+      // Update: resource owner. status + embedding + embedding lifecycle
+      // transitions are server-only (driven by the embedding trigger and by
+      // contribution commits).
       allow update: if isOrgMember(resource.data.orgId)
-        && !('status' in request.resource.data.diff(resource.data).affectedKeys())
-        && !('embedding' in request.resource.data.diff(resource.data).affectedKeys());
+        && !('status'           in request.resource.data.diff(resource.data).affectedKeys())
+        && !('embedding'        in request.resource.data.diff(resource.data).affectedKeys())
+        && !('embeddingVersion' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('embeddingStatus'  in request.resource.data.diff(resource.data).affectedKeys());
 
       allow delete: if isOrgMember(resource.data.orgId);
       allow write: if isPlatformAdmin();
@@ -118,6 +121,9 @@ service cloud.firestore {
       // urgency + rapid ARE set on create (they're how Flow A/B is chosen) — allowed.
       // needs[] is allowed on create; client-set needs[*].progressPct is rejected
       // because needs is the full array; callable will strip any progressPct.
+      // Direct client-creates are functionally blocked by the callable handling
+      // host/participantOrgIds/contributorCount/lastUpdatedAt — keep those out
+      // of any client-write attempt too so the doc is never half-shaped.
       allow create: if isSignedIn()
         && !('phase' in request.resource.data)
         && !('progressPct' in request.resource.data)
@@ -125,10 +131,17 @@ service cloud.firestore {
         && !('embedding' in request.resource.data)
         && !('advancedEarly' in request.resource.data)
         && !('phaseChangedAt' in request.resource.data)
-        && !('closedAt' in request.resource.data);
+        && !('closedAt' in request.resource.data)
+        && !('host' in request.resource.data)
+        && !('participantOrgIds' in request.resource.data)
+        && !('contributorCount' in request.resource.data)
+        && !('lastUpdatedAt' in request.resource.data);
 
       // Update: host org only. urgency, rapid, needs, phase, progressPct, etc.
       // ALL locked. Clients can edit title/description/deadline/geo/category.
+      // host snapshot, participantOrgIds, contributorCount, lastUpdatedAt are
+      // server-owned — bumped by callables/triggers in the commit + phase-change
+      // paths.
       allow update: if isOrgMember(resource.data.hostOrgId)
         && !('urgency' in request.resource.data.diff(resource.data).affectedKeys())
         && !('rapid'   in request.resource.data.diff(resource.data).affectedKeys())
@@ -139,7 +152,11 @@ service cloud.firestore {
         && !('phaseChangedAt' in request.resource.data.diff(resource.data).affectedKeys())
         && !('closedAt' in request.resource.data.diff(resource.data).affectedKeys())
         && !('embedding' in request.resource.data.diff(resource.data).affectedKeys())
-        && !('hostOrgId' in request.resource.data.diff(resource.data).affectedKeys());
+        && !('hostOrgId' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('host' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('participantOrgIds' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('contributorCount' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('lastUpdatedAt' in request.resource.data.diff(resource.data).affectedKeys());
 
       allow write: if isPlatformAdmin();
 

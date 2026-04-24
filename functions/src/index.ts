@@ -19,10 +19,12 @@ setGlobalOptions({ region: "asia-south1", maxInstances: 10 });
 // Triggers — stubs to be filled per plan §Files to create #8.
 // Kept as individual exports so they deploy/retry independently.
 export { onAgreementFullySigned } from "./triggers/onAgreementFullySigned";
+export { onTicketCreated } from "./triggers/onTicketCreated";
 export { onRapidTicketCreated } from "./triggers/onRapidTicketCreated";
 export { onPhotoProofUploaded } from "./triggers/onPhotoProofUploaded";
 export { onSignoffRecorded } from "./triggers/onSignoffRecorded";
 export { onTicketClosed } from "./triggers/onTicketClosed";
+export { onResourceCreated } from "./triggers/onResourceCreated";
 export { appendAuditLog } from "./triggers/appendAuditLog";
 
 // Scheduled jobs
@@ -33,6 +35,7 @@ export { emergencyExpirySweep } from "./scheduled/emergencyExpirySweep";
 // Callables
 export { approveOrg } from "./callables/approveOrg";
 export { raiseTicket } from "./callables/raiseTicket";
+export { createResource } from "./callables/createResource";
 export { pledge } from "./callables/pledge";
 export { signAgreement } from "./callables/signAgreement";
 export { advancePhase } from "./callables/advancePhase";

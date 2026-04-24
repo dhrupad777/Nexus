@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { GeoSchema, ResourceCategory } from "./common";
+import { EmbeddingStatus, GeoSchema, ResourceCategory } from "./common";
 
 export const TicketUrgency = z.enum(["NORMAL", "EMERGENCY"]);
 export type TicketUrgency = z.infer<typeof TicketUrgency>;
@@ -15,6 +15,8 @@ export type TicketPhase = z.infer<typeof TicketPhase>;
 
 export const NeedSchema = z.object({
   resourceCategory: ResourceCategory,
+  /** Free-text refinement inside category, e.g. "primary education" inside EDUCATION. Embedding input concatenates this when present. */
+  subtype: z.string().max(80).optional(),
   quantity: z.number().positive(),
   unit: z.string().min(1),
   valuationINR: z.number().nonnegative(),
@@ -27,9 +29,23 @@ export const NeedSchema = z.object({
 });
 export type Need = z.infer<typeof NeedSchema>;
 
+/**
+ * Snapshot of the host org denormalized onto the ticket at raise time.
+ * Set by `raiseTicket` callable. Lets ticket cards render host name + type
+ * without a JOIN. Status is always ACTIVE at raise (only ACTIVE orgs can
+ * raise) so we don't store it; reliability lives on the org doc and is
+ * read separately when needed.
+ */
+export const TicketHostSnapshotSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(["NGO", "ORG"]),
+});
+export type TicketHostSnapshot = z.infer<typeof TicketHostSnapshotSchema>;
+
 /** Full server-side shape, including locked fields. */
 export const TicketSchema = z.object({
   hostOrgId: z.string(),
+  host: TicketHostSnapshotSchema,
   title: z.string().min(1),
   description: z.string().min(1),
   category: z.string().min(1),
@@ -43,11 +59,26 @@ export const TicketSchema = z.object({
   advancedEarly: z.boolean().default(false),
   createdAt: z.number().int(),
   phaseChangedAt: z.number().int(),
+  /** Bumped on commit, phase-change, proof, signoff. Drives dashboard sort. */
+  lastUpdatedAt: z.number().int(),
   closedAt: z.number().int().nullable().default(null),
+  /**
+   * Set of orgIds participating as host or contributor. Initialized to
+   * [hostOrgId] at raise; contributors union-added on commit (Flow A:
+   * onAgreementFullySigned; Flow B: pledge). Single source for the dashboard
+   * Active Tickets query (`array-contains` viewerOrgId). Cap 50 — full list
+   * still queryable via the contributions subcollection.
+   */
+  participantOrgIds: z.array(z.string()).max(50),
+  /** Distinct committed contributors (host excluded). Bumped in same txn as participantOrgIds. */
+  contributorCount: z.number().int().nonnegative(),
+  // Server-written embedding lifecycle (mirrors resource.ts); filled by onTicketCreated.
+  embeddingVersion: z.string().nullable().optional(),
+  embeddingStatus: EmbeddingStatus.optional(),
 });
 export type Ticket = z.infer<typeof TicketSchema>;
 
-/** Client-writable create payload. Server fills phase/progress/needs[].progressPct/rapid/embedding. */
+/** Client-writable create payload. Server fills phase/progress/needs[].progressPct/rapid/host/participantOrgIds/contributorCount/lastUpdatedAt/embedding. */
 export const RaiseTicketInputSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(10),

@@ -1119,3 +1119,16 @@ a:hover {
   .story-photo { flex: 0 0 54%; width: auto; height: 100%; }
   .story-content { padding: 36px 40px 32px; gap: 12px; }
 }
+
+/* Dashboard bento — Recommended primary, Active secondary; stacks on narrow
+ * screens with Recommended first per Albin/Nexus_Dashboard_Logic.md §8.5. */
+.dashboard-bento {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 24px;
+}
+@media (max-width: 800px) {
+  .dashboard-bento {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -27,6 +27,14 @@
       ]
     },
     {
+      "collectionGroup": "tickets",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participantOrgIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastUpdatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "contributions",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -51,6 +59,15 @@
         { "fieldPath": "orgId", "order": "ASCENDING" },
         { "fieldPath": "rapidBroadcast", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orgId", "order": "ASCENDING" },
+        { "fieldPath": "rapidBroadcast", "order": "ASCENDING" },
+        { "fieldPath": "score", "order": "DESCENDING" }
       ]
     },
     {

@@ -2,6 +2,7 @@ export * from "./common";
 export * from "./org";
 export * from "./resource";
 export * from "./ticket";
+export * from "./match";
 export * from "./contribution";
 export * from "./agreement";
 export * from "./signoff";

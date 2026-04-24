@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "test:rules": "vitest run tests/rules",
-    "emu:rules": "firebase emulators:exec --only firestore \"vitest run tests/rules\""
+    "emu:rules": "firebase emulators:exec --only firestore \"vitest run tests/rules\"",
+    "emu": "firebase emulators:start --only auth,firestore,functions",
+    "seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
+    "seed:emu": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",
