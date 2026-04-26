@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 
 /** Gate the /(app) routes behind auth. Redirect unauthenticated users to /login. */
 export default function AppShellLayout({ children }: { children: ReactNode }) {
-  const { user, loading, claims } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -21,8 +21,6 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
       </div>
     );
   }
-
-  const isAdmin = claims?.role === "PLATFORM_ADMIN";
 
   const navLinkStyle = {
     fontWeight: 600,
@@ -41,11 +39,6 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
           fontSize: 13,
         }}
       >
-        {isAdmin && (
-          <Link href="/admin" style={navLinkStyle}>
-            Admin
-          </Link>
-        )}
         <Link href="/dashboard" style={navLinkStyle}>
           Dashboard
         </Link>
