@@ -37,24 +37,33 @@
    - **Dhrupad** — Org type: `ORG`, Org name: `Dhrupad Manufacturing`, Region: `Panvel, MH`
 5. Submit. Your dashboard will now say **"Pending review"** — that's expected. Wait for A.2.
 
-## A.2 — Dhrupad: become admin and approve everyone
+## A.2 — Dhrupad: approve all three orgs
+
+**Prerequisite:** All 3 of you have completed A.1 (signed up + finished the
+onboarding form). Each of your dashboards should show a yellow
+**"Pending review"** banner.
 
 **No CLI, no Firestore Console — everything happens on the site.**
-
 `dhrupadrajpurohit@gmail.com` is hardcoded as the platform admin. On sign-in,
-the app self-bootstraps the `PLATFORM_ADMIN` custom claim via the
-`bootstrapPlatformAdmin` callable and refreshes the ID token in place.
+the app gives that account the `PLATFORM_ADMIN` claim automatically.
 
-**Dhrupad:**
+**Dhrupad — do this in your browser:**
 
-1. Make sure you signed up at A.1 with the Google account `dhrupadrajpurohit@gmail.com`. If you used the wrong account, sign out and sign in with the correct one.
-2. The app shell now shows an **"Admin · Pending orgs"** link in the top-right of any authenticated page. Click it (or visit **`<APP_URL>/admin/organizations`** directly).
-3. You'll see Niraj's and Albin's pending orgs. Click **Approve** on each.
-4. Each approval calls the `approveOrg` callable, which sets `status: ACTIVE` on the org and grants `{role: "ORG_ADMIN", orgId}` claims to every user in that org.
+1. You should already be signed in from A.1 as `dhrupadrajpurohit@gmail.com`. **Stay signed in** — no need to log out and back in.
+2. Look at the **top-right of any authenticated page** (header has: `Admin · Dashboard · Profile`). Click **"Admin"**.
+   - *If the "Admin" link doesn't appear:* hit **F5** to refresh. The PLATFORM_ADMIN claim is set on first sign-in by the `bootstrapPlatformAdmin` callable; refreshing pulls in the updated token.
+3. You're now at **`<APP_URL>/admin`**. You'll see three cards: **Niraj Foundation**, **Albin Capital**, **Dhrupad Manufacturing**.
+4. Click **"Approve"** on each card. Each click takes ~2-3 seconds and the card disappears when done. **Approve all three** (including your own).
 
-**Niraj and Albin** — once Dhrupad has approved you, **sign out and sign back in** to refresh your token. (Token refresh on the *current* session is automatic only for the user being modified; Niraj and Albin are in separate browser sessions, so they need a re-login.)
+**Niraj and Albin — do this in your browsers:**
 
-> **Troubleshooting** — if the Admin link doesn't appear after sign-in, refresh the page once. The callable is idempotent, so signing out and back in is always safe to retry.
+5. After Dhrupad tells you he's approved your org, click **"Profile"** in the top-right → **"Sign out"**, then sign back in with the same Google account. This refreshes your token so `{role: ORG_ADMIN, orgId}` claims take effect.
+6. Go to **`<APP_URL>/dashboard`**. The yellow "Pending review" banner should be gone. You're ready for A.3.
+
+> **Troubleshooting**
+> - "Admin" link missing for Dhrupad → F5. If still missing, sign out via Profile → sign back in. Bootstrap is idempotent.
+> - Approve button shows an error → check Firebase Console → Functions → `approveOrg` logs and retry.
+> - Niraj/Albin still see "Pending review" after approval → they need to **fully sign out and sign back in**. Refreshing the page is not enough; the ID token has to be reissued.
 
 ## A.3 — Albin: list your FUNDS resource
 

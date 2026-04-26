@@ -13,7 +13,7 @@ import { isPlatformAdminEmail } from "../config/admins";
  * Idempotent: if the claim is already set, returns { alreadyAdmin: true }
  * without touching Auth or Firestore.
  */
-export const bootstrapPlatformAdmin = onCall(async (request) => {
+export const bootstrapPlatformAdmin = onCall({ cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "sign in");
 
   const uid = request.auth.uid;

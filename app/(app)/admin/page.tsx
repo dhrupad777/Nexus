@@ -17,13 +17,12 @@ interface PendingOrg {
 }
 
 /**
- * Platform admin dashboard. Lists organizations with status=PENDING_REVIEW
- * and exposes an Approve button that calls the existing `approveOrg`
- * callable (flips status to ACTIVE + sets {role, orgId} claims on every
- * user in the org). Replaces the manual Firestore-Console flow from
- * DRY_RUN §A.2.
+ * Platform admin page. Lists organizations with status=PENDING_REVIEW and
+ * exposes an Approve button that calls `approveOrg` (sets status=ACTIVE +
+ * grants {role, orgId} claims to every user in the org). Replaces the
+ * manual Firestore-Console flow from DRY_RUN §A.2.
  */
-export default function AdminOrganizationsPage() {
+export default function AdminPage() {
   const { user, loading, claims } = useAuth();
   const router = useRouter();
   const [rows, setRows] = useState<PendingOrg[] | null>(null);
@@ -66,7 +65,7 @@ export default function AdminOrganizationsPage() {
         setRows(out);
       },
       (err) => {
-        console.error("[admin/organizations] snapshot error", err);
+        console.error("[admin] snapshot error", err);
         setRows([]);
       },
     );

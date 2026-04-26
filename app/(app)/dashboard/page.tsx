@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { useUserProfile } from "@/lib/auth/useUserProfile";
 import { useOrgStatus } from "../resources/_lib/useOrgStatus";
 import { RecommendedTicketsList } from "./_components/RecommendedTicketsList";
 import { ActiveTicketsList } from "./_components/ActiveTicketsList";
@@ -20,9 +21,15 @@ import { ActiveTicketsList } from "./_components/ActiveTicketsList";
  */
 export default function Dashboard() {
   const { user, loading, claims } = useAuth();
-  const orgStatus = useOrgStatus(claims?.orgId ?? null);
+  // Read users/{uid} directly for the canonical "did they onboard" signal.
+  // claims.orgId is only issued post-approval, so during PENDING_REVIEW the
+  // claim is empty and we'd otherwise show "Finish onboarding" by mistake.
+  const profile = useUserProfile(user?.uid ?? null);
+  const profileOrgId = profile.loading ? null : profile.orgId;
+  const orgId = claims?.orgId ?? profileOrgId;
+  const orgStatus = useOrgStatus(orgId);
 
-  if (loading || orgStatus.loading) {
+  if (loading || profile.loading || orgStatus.loading) {
     return (
       <p className="muted-text" style={{ textAlign: "center", marginTop: 64 }}>
         Loading…
@@ -31,9 +38,10 @@ export default function Dashboard() {
   }
   if (!user) return null;
 
-  const orgId = claims?.orgId ?? null;
   const onboarded = Boolean(orgId);
-  const isActive = orgStatus.status === "ACTIVE";
+  // The full dashboard requires both ACTIVE status AND a claim-issued orgId
+  // (server-only writes / member-gated rules check the claim, not Firestore).
+  const isActive = orgStatus.status === "ACTIVE" && Boolean(claims?.orgId);
 
   if (!onboarded) {
     return (

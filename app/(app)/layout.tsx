@@ -24,30 +24,35 @@ export default function AppShellLayout({ children }: { children: ReactNode }) {
 
   const isAdmin = claims?.role === "PLATFORM_ADMIN";
 
+  const navLinkStyle = {
+    fontWeight: 600,
+    color: "var(--color-accent, #2563eb)",
+    textDecoration: "none",
+  } as const;
+
   return (
     <div className="container" style={{ padding: "32px 24px" }}>
-      {isAdmin && (
-        <div
-          className="row"
-          style={{
-            justifyContent: "flex-end",
-            marginBottom: 16,
-            gap: 12,
-            fontSize: 13,
-          }}
-        >
-          <Link
-            href="/admin/organizations"
-            style={{
-              fontWeight: 600,
-              color: "var(--color-accent, #2563eb)",
-              textDecoration: "none",
-            }}
-          >
-            Admin · Pending orgs
+      <div
+        className="row"
+        style={{
+          justifyContent: "flex-end",
+          marginBottom: 16,
+          gap: 16,
+          fontSize: 13,
+        }}
+      >
+        {isAdmin && (
+          <Link href="/admin" style={navLinkStyle}>
+            Admin
           </Link>
-        </div>
-      )}
+        )}
+        <Link href="/dashboard" style={navLinkStyle}>
+          Dashboard
+        </Link>
+        <Link href="/profile" style={navLinkStyle}>
+          Profile
+        </Link>
+      </div>
       {children}
     </div>
   );
