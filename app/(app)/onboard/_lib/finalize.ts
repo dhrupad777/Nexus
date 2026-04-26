@@ -36,6 +36,7 @@ export async function finalizeOrg(
   const orgRef = doc(db, "organizations", uid);
   const existingSnap = await getDoc(orgRef);
   const isEdit = existingSnap.exists();
+  const existing = isEdit ? (existingSnap.data() as Record<string, unknown>) : null;
 
   const missing: string[] = [];
   if (!data.type) missing.push("type");
@@ -52,6 +53,16 @@ export async function finalizeOrg(
   }
 
   if (missing.length) throw new OnboardingDataIncompleteError(missing);
+
+  // Type immutability: once an org is created with a type, that type is
+  // locked. Any client path that tries to change it (URL tampering, chat
+  // misfire, manual session edit) gets rejected here.
+  const existingType = existing?.type;
+  if (isEdit && existingType && existingType !== data.type) {
+    throw new Error(
+      `Org type is locked to ${String(existingType)} and cannot be changed to ${String(data.type)}.`,
+    );
+  }
 
   const govtDocs = uploadedDocTypes.flatMap((t) => {
     const d = docs[t];

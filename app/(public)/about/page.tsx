@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { HomeTopbar } from "../_components/HomeTopbar";
 import { NexusLogo } from "../_components/NexusLogo";
+import { AboutCta } from "./_components/AboutCta";
 
 export default function AboutPage() {
   return (
@@ -31,12 +31,7 @@ export default function AboutPage() {
             allocation for non-urgent work; and <strong>rapid</strong> — instant
             broadcast + pledge-first commitment for emergency response.
           </p>
-          <div className="row" style={{ gap: 12, marginTop: 8 }}>
-            <Link href="/login?next=/onboard" className="btn btn-primary">
-              Register your organization
-            </Link>
-            <Link href="/" className="btn btn-ghost">Back home</Link>
-          </div>
+          <AboutCta />
         </div>
       </main>
       <footer className="home-footer">

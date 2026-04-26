@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useUserProfile } from "@/lib/auth/useUserProfile";
+import { useOrgRecord } from "@/lib/onboarding/useOrgRecord";
 import { useOrgStatus } from "../resources/_lib/useOrgStatus";
 import { RecommendedTicketsList } from "./_components/RecommendedTicketsList";
 import { ActiveTicketsList } from "./_components/ActiveTicketsList";
+import { ProfileCard } from "./_components/ProfileCard";
 
 /**
  * Two-surface dashboard per Albin/Nexus_Dashboard_Logic.md + List.md §2.10.
@@ -29,6 +31,7 @@ export default function Dashboard() {
   const profileOrgId = profile.loading ? null : profile.orgId;
   const orgId = claims?.orgId ?? profileOrgId;
   const orgStatus = useOrgStatus(orgId);
+  const orgRecord = useOrgRecord(user?.uid ?? null);
 
   // Auto-refresh ID token when the admin approves us. Without this, the
   // user would have to sign out and back in to pick up their new
@@ -86,56 +89,25 @@ export default function Dashboard() {
   return (
     <div className="stack" style={{ maxWidth: 1200, margin: "0 auto" }}>
       <header className="stack-sm">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-          <h1
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 32,
-              fontWeight: 700,
-              letterSpacing: "-0.02em",
-              margin: 0,
-            }}
-          >
-            Dashboard
-          </h1>
-          <Link
-            href="/onboard"
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--color-accent, #2563eb)",
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Edit organization profile →
-          </Link>
-        </div>
+        <h1
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: 32,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            margin: 0,
+          }}
+        >
+          Dashboard
+        </h1>
         <p className="muted-text">
           {isActive
             ? "Your org is approved. Recommended tickets and active work below."
-            : `Your org is ${orgStatus.status === "PENDING_REVIEW" ? "under review" : (orgStatus.status ?? "not active")}. Once approved, you'll unlock matching and ticketing.`}
+            : "Track your profile and unlock matching once approved."}
         </p>
       </header>
 
-      {!isActive && (
-        <div
-          className="card"
-          style={{
-            borderColor: "var(--color-warn, #d97706)",
-            background: "rgba(234, 179, 8, 0.08)",
-          }}
-        >
-          <strong>Pending review</strong>
-          <p className="muted-text" style={{ margin: "4px 0 8px" }}>
-            A Platform Admin will approve your documents shortly. You&apos;ll get
-            access to matching and ticket-raising once that happens.
-          </p>
-          <Link href="/onboard" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-accent, #2563eb)" }}>
-            Add or update documents →
-          </Link>
-        </div>
-      )}
+      <ProfileCard orgRecord={orgRecord} />
 
       {isActive && orgId && (
         <div className="dashboard-bento">

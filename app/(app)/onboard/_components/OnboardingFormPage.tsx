@@ -16,6 +16,7 @@ import { clearSession, loadSession, saveSession } from "../_lib/sessionStore";
 import { finalizeOrg, OnboardingDataIncompleteError } from "../_lib/finalize";
 import { DocPicker } from "./DocPicker";
 import { uploadDocPhoto } from "../_lib/uploadDoc";
+import { requiredDocs } from "@/lib/onboarding/requirements";
 
 const Schema = z.object({
   legalName: z.string().min(1, "Required"),
@@ -36,12 +37,6 @@ const DOC_LABEL: Record<DocType, string> = {
   CIN: "CIN",
 };
 
-function requiredDocs(type: OrgType | undefined): DocType[] {
-  if (type === "NGO") return ["PAN", "REG_CERT", "80G", "12A"];
-  if (type === "ORG") return ["PAN", "REG_CERT", "GST", "CIN"];
-  return ["PAN", "REG_CERT"];
-}
-
 export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
   const { user } = useAuth();
   const router = useRouter();
@@ -50,6 +45,10 @@ export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
   const [sessionId, setSessionId] = useState("");
   const [partialData, setPartialData] = useState<OnboardingData>({});
   const [docs, setDocs] = useState<DocsByType>({});
+  // Firestore-committed type — the immutable source of truth for an
+  // already-onboarded user. When set, it overrides any ?type= URL param
+  // so that hand-crafted URLs can't switch the org type.
+  const [existingOrgType, setExistingOrgType] = useState<OrgType | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyType, setBusyType] = useState<DocType | null>(null);
@@ -73,12 +72,16 @@ export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
           const orgSnap = await getDoc(doc(db, "organizations", user.uid));
           if (orgSnap.exists()) {
             const o = orgSnap.data() as Record<string, unknown>;
+            const rawType = o.type;
+            const committedType: OrgType | null =
+              rawType === "NGO" || rawType === "ORG" ? rawType : null;
+            if (!cancelled && committedType) setExistingOrgType(committedType);
             const geo = o.geo as
               | { lat?: number; lng?: number; adminRegion?: string; operatingAreas?: string[] }
               | undefined;
             const contact = o.contact as { email?: string; phone?: string } | undefined;
             firestorePartial = {
-              type: (o.type as OrgType | undefined) ?? seed.type,
+              type: committedType ?? seed.type,
               legalName: o.name as string | undefined,
               email: contact?.email,
               phone: contact?.phone,
@@ -129,7 +132,10 @@ export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
     };
   }, [type, form, user]);
 
-  const effectiveType = type ?? partialData.type;
+  // Firestore-committed type wins over the URL prop and any session value.
+  // Closes the URL-tampering loophole where a user with an ORG could visit
+  // /onboard/form?type=NGO and start uploading NGO docs into their ORG.
+  const effectiveType = existingOrgType ?? type ?? partialData.type;
   const neededDocs = requiredDocs(effectiveType);
 
   async function onSubmit(values: FormValues) {
