@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { signInWithPopup, signOut } from "firebase/auth";
-import { auth, googleProvider } from "@/lib/firebase/client";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { auth, db, googleProvider } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
 const ADMIN_EMAIL = "dhrupadrajpurohit@gmail.com";
@@ -13,79 +14,135 @@ interface PendingOrg {
   type: string;
   contactEmail: string | null;
   region: string | null;
-  ownerEmail: string | null;
   createdAt: number | null;
 }
 
 /**
- * Standalone platform-admin page. Lives outside the (app) route group,
- * so it has its own auth surface — Google sign-in directly on the page,
- * no redirect to /login. Only `dhrupadrajpurohit@gmail.com` is allowed
- * to act; everyone else sees an "access denied" screen.
+ * Standalone platform-admin page. Lives outside the (app) route group.
  *
- * Calls same-origin Next.js API routes (`/api/admin/pending`,
- * `/api/admin/approve`) which run server-side with firebase-admin.
- * No Cloud Function callable, no CORS preflight, no Cloud Run IAM.
+ * Flow:
+ *   1. User signs in with Google (popup, on this page).
+ *   2. If their email matches ADMIN_EMAIL, the page POSTs to
+ *      /api/admin/bootstrap which grants the PLATFORM_ADMIN claim
+ *      server-side (idempotent).
+ *   3. Client force-refreshes the ID token; AuthProvider's
+ *      onIdTokenChanged listener picks up the new claim into context.
+ *   4. With the claim live, a Firestore onSnapshot subscribes to
+ *      PENDING_REVIEW orgs — list updates in real time as new
+ *      onboarding submissions land.
+ *   5. Approve button POSTs to /api/admin/approve which sets
+ *      status=ACTIVE and grants {role, orgId} claims to the org owner.
  */
 export default function AdminPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, claims } = useAuth();
   const [orgs, setOrgs] = useState<PendingOrg[] | null>(null);
   const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(false);
 
-  const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL;
+  const isAdminEmail = user?.email?.toLowerCase() === ADMIN_EMAIL;
+  const isPlatformAdmin = claims?.role === "PLATFORM_ADMIN";
 
-  const refetch = useCallback(async () => {
-    if (!user) return;
-    setError(null);
-    try {
-      const idToken = await user.getIdToken();
-      const res = await fetch("/api/admin/pending", {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
-      const data = (await res.json()) as { orgs: PendingOrg[] };
-      setOrgs(data.orgs);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
-      setOrgs([]);
-    }
-  }, [user]);
-
+  // Step 2 + 3: bootstrap claim + force token refresh after sign-in.
+  // Idempotent on the server side, so safe to re-run on every render
+  // where the email matches but the claim isn't in the token yet.
   useEffect(() => {
-    if (!isAdmin) return;
-    void refetch();
-  }, [isAdmin, refetch]);
-
-  async function approve(orgId: string) {
-    if (!user) return;
-    setActing(orgId);
-    setError(null);
-    try {
-      const idToken = await user.getIdToken();
-      const res = await fetch("/api/admin/approve", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ orgId }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(body.error ?? `HTTP ${res.status}`);
+    if (!user || !isAdminEmail) return;
+    if (isPlatformAdmin) return; // already in token, skip
+    let cancelled = false;
+    setBootstrapping(true);
+    (async () => {
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/admin/bootstrap", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (cancelled) return;
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(body.error ?? `HTTP ${res.status}`);
+        }
+        await user.getIdToken(true);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Bootstrap failed");
+        }
+      } finally {
+        if (!cancelled) setBootstrapping(false);
       }
-      await refetch();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Approve failed");
-    } finally {
-      setActing(null);
-    }
-  }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isAdminEmail, isPlatformAdmin]);
+
+  // Step 4: live subscription to PENDING_REVIEW orgs. Only runs once the
+  // claim is live in the token, otherwise Firestore rules reject the read.
+  useEffect(() => {
+    if (!isPlatformAdmin) return;
+    const q = query(
+      collection(db, "organizations"),
+      where("status", "==", "PENDING_REVIEW"),
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const out: PendingOrg[] = snap.docs.map((doc) => {
+          const data = doc.data() as Record<string, unknown>;
+          const contact = data.contact as { email?: string } | undefined;
+          const geo = data.geo as { adminRegion?: string } | undefined;
+          const createdAtRaw = data.createdAt as unknown;
+          return {
+            id: doc.id,
+            name: String(data.name ?? "(unnamed)"),
+            type: String(data.type ?? "ORG"),
+            contactEmail: contact?.email ?? null,
+            region: geo?.adminRegion ?? null,
+            createdAt: typeof createdAtRaw === "number" ? createdAtRaw : null,
+          };
+        });
+        out.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+        setOrgs(out);
+      },
+      (err) => {
+        console.error("[/admin] snapshot error", err);
+        setError(err instanceof Error ? err.message : "Failed to load orgs");
+        setOrgs([]);
+      },
+    );
+    return unsub;
+  }, [isPlatformAdmin]);
+
+  const approve = useCallback(
+    async (orgId: string) => {
+      if (!user) return;
+      setActing(orgId);
+      setError(null);
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/admin/approve", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ orgId }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(body.error ?? `HTTP ${res.status}`);
+        }
+        // Live snapshot will drop the row automatically once status flips.
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Approve failed");
+      } finally {
+        setActing(null);
+      }
+    },
+    [user],
+  );
 
   async function onSignIn() {
     setSigningIn(true);
@@ -113,7 +170,7 @@ export default function AdminPage() {
           </h1>
           <p className="muted-text" style={{ fontSize: 13 }}>
             Restricted to <code>{ADMIN_EMAIL}</code>. Approving an org sets its status to ACTIVE
-            and grants the owner their <code>{"{role, orgId}"}</code> claims.
+            and grants the owner their <code>{"{role, orgId}"}</code> claims live — no sign-out needed on their end.
           </p>
         </header>
 
@@ -133,7 +190,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {!loading && user && !isAdmin && (
+        {!loading && user && !isAdminEmail && (
           <div className="stack-sm">
             <strong style={{ color: "var(--color-danger, #dc2626)" }}>Access denied</strong>
             <p className="muted-text" style={{ fontSize: 13 }}>
@@ -146,11 +203,13 @@ export default function AdminPage() {
           </div>
         )}
 
-        {!loading && user && isAdmin && (
+        {!loading && user && isAdminEmail && (
           <>
             <div className="row" style={{ justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
               <span className="muted-text">
                 Signed in as <strong>{user.email}</strong>
+                {bootstrapping && " · setting up admin claim…"}
+                {!bootstrapping && isPlatformAdmin && " · live"}
               </span>
               <button type="button" className="btn btn-ghost" onClick={onSignOut}>
                 Sign out
@@ -170,21 +229,20 @@ export default function AdminPage() {
               </div>
             )}
 
-            {orgs === null && <p className="muted-text">Loading pending organizations…</p>}
+            {!isPlatformAdmin && !error && <p className="muted-text">Granting admin claim…</p>}
 
-            {orgs !== null && orgs.length === 0 && (
+            {isPlatformAdmin && orgs === null && <p className="muted-text">Loading pending organizations…</p>}
+
+            {isPlatformAdmin && orgs !== null && orgs.length === 0 && (
               <div className="card stack-sm" style={{ textAlign: "center" }}>
                 <strong>No pending organizations</strong>
                 <p className="muted-text" style={{ fontSize: 13 }}>
-                  New onboarding submissions appear here. Hit <em>Refresh</em> to re-check.
+                  New onboarding submissions appear here automatically.
                 </p>
-                <button type="button" className="btn btn-ghost" onClick={() => void refetch()}>
-                  Refresh
-                </button>
               </div>
             )}
 
-            {orgs !== null && orgs.length > 0 && (
+            {isPlatformAdmin && orgs !== null && orgs.length > 0 && (
               <div className="stack-sm">
                 {orgs.map((org) => (
                   <div key={org.id} className="card stack-sm">
@@ -210,7 +268,7 @@ export default function AdminPage() {
                         </div>
                         <h3 style={{ fontWeight: 600, fontSize: 17, margin: 0 }}>{org.name}</h3>
                         <span className="muted-text" style={{ fontSize: 12 }}>
-                          {org.ownerEmail ?? org.contactEmail ?? "—"}
+                          {org.contactEmail ?? "—"}
                           {org.region ? ` · ${org.region}` : ""}
                           {org.createdAt ? ` · ${new Date(org.createdAt).toLocaleDateString()}` : ""}
                         </span>

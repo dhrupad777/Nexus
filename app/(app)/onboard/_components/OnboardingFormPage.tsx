@@ -7,6 +7,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import type { OnboardingData, OrgType } from "@/lib/schemas";
 import type { DocsByType, DocType, UploadedDoc } from "../_lib/types";
@@ -58,21 +60,74 @@ export function OnboardingFormPage({ type }: { type: OrgType | undefined }) {
   });
 
   useEffect(() => {
-    const seed: Partial<OnboardingData> = type ? { type } : {};
-    const loaded = loadSession(seed);
-    setSessionId(loaded.sessionId);
-    setPartialData(loaded.partialData);
-    setDocs(loaded.docs);
-    form.reset({
-      legalName: loaded.partialData.legalName ?? "",
-      email: loaded.partialData.email ?? "",
-      phone: loaded.partialData.phone ?? "",
-      adminRegion: loaded.partialData.geo?.adminRegion ?? "",
-      lat: typeof loaded.partialData.geo?.lat === "number" ? loaded.partialData.geo.lat : 0,
-      lng: typeof loaded.partialData.geo?.lng === "number" ? loaded.partialData.geo.lng : 0,
-    });
-    setBooted(true);
-  }, [type, form]);
+    let cancelled = false;
+    async function init() {
+      const seed: Partial<OnboardingData> = type ? { type } : {};
+      let firestorePartial: Partial<OnboardingData> = {};
+      let firestoreDocs: DocsByType = {};
+
+      // Returning user? Load their existing org from Firestore so they can
+      // edit text fields / add missing documents without re-typing everything.
+      if (user) {
+        try {
+          const orgSnap = await getDoc(doc(db, "organizations", user.uid));
+          if (orgSnap.exists()) {
+            const o = orgSnap.data() as Record<string, unknown>;
+            const geo = o.geo as
+              | { lat?: number; lng?: number; adminRegion?: string; operatingAreas?: string[] }
+              | undefined;
+            const contact = o.contact as { email?: string; phone?: string } | undefined;
+            firestorePartial = {
+              type: (o.type as OrgType | undefined) ?? seed.type,
+              legalName: o.name as string | undefined,
+              email: contact?.email,
+              phone: contact?.phone,
+              geo: {
+                lat: geo?.lat,
+                lng: geo?.lng,
+                adminRegion: geo?.adminRegion,
+                operatingAreas: geo?.operatingAreas ?? [],
+              },
+            };
+            const govtDocs = (o.govtDocs as Array<{ docType: string; fileUrl: string }> | undefined) ?? [];
+            for (const d of govtDocs) {
+              firestoreDocs[d.docType as DocType] = {
+                docType: d.docType as DocType,
+                fileUrl: d.fileUrl,
+                storagePath: "",
+                uploadedAt: 0,
+              };
+            }
+          }
+        } catch (err) {
+          console.warn("[onboarding] could not load existing org", err);
+        }
+      }
+      if (cancelled) return;
+
+      // Layer: session storage -> firestore (firestore wins for fields it has).
+      const loaded = loadSession({ ...seed, ...firestorePartial });
+      const merged: Partial<OnboardingData> = { ...loaded.partialData, ...firestorePartial };
+      const mergedDocs: DocsByType = { ...loaded.docs, ...firestoreDocs };
+
+      setSessionId(loaded.sessionId);
+      setPartialData(merged);
+      setDocs(mergedDocs);
+      form.reset({
+        legalName: merged.legalName ?? "",
+        email: merged.email ?? "",
+        phone: merged.phone ?? "",
+        adminRegion: merged.geo?.adminRegion ?? "",
+        lat: typeof merged.geo?.lat === "number" ? merged.geo.lat : 0,
+        lng: typeof merged.geo?.lng === "number" ? merged.geo.lng : 0,
+      });
+      setBooted(true);
+    }
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, [type, form, user]);
 
   const effectiveType = type ?? partialData.type;
   const neededDocs = requiredDocs(effectiveType);

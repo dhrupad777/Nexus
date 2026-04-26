@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useUserProfile } from "@/lib/auth/useUserProfile";
 import { useOrgStatus } from "../resources/_lib/useOrgStatus";
@@ -29,6 +30,20 @@ export default function Dashboard() {
   const orgId = claims?.orgId ?? profileOrgId;
   const orgStatus = useOrgStatus(orgId);
 
+  // Auto-refresh ID token when the admin approves us. Without this, the
+  // user would have to sign out and back in to pick up their new
+  // {role, orgId} claims after approval. With this, the dashboard
+  // transitions from "Pending review" to active within ~1s.
+  const liveStatus = orgStatus.loading ? null : orgStatus.status;
+  useEffect(() => {
+    if (!user) return;
+    if (liveStatus === "ACTIVE" && !claims?.orgId) {
+      void user.getIdToken(true).catch((err) => {
+        console.warn("[dashboard] post-approval token refresh failed", err);
+      });
+    }
+  }, [user, liveStatus, claims?.orgId]);
+
   if (loading || profile.loading || orgStatus.loading) {
     return (
       <p className="muted-text" style={{ textAlign: "center", marginTop: 64 }}>
@@ -54,12 +69,14 @@ export default function Dashboard() {
             letterSpacing: "-0.02em",
           }}
         >
-          Finish onboarding
+          Set up your organization
         </h1>
-        <p className="muted-text">You need an organization profile before you can use Nexus.</p>
+        <p className="muted-text">
+          Tell us who you are and upload your government documents. Takes about 2 minutes.
+        </p>
         <div className="row" style={{ justifyContent: "center" }}>
           <Link href="/onboard" className="btn btn-primary">
-            Start onboarding
+            Start setup
           </Link>
         </div>
       </div>
@@ -69,16 +86,31 @@ export default function Dashboard() {
   return (
     <div className="stack" style={{ maxWidth: 1200, margin: "0 auto" }}>
       <header className="stack-sm">
-        <h1
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 32,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Dashboard
-        </h1>
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <h1
+            style={{
+              fontFamily: "var(--font-display)",
+              fontSize: 32,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              margin: 0,
+            }}
+          >
+            Dashboard
+          </h1>
+          <Link
+            href="/onboard"
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--color-accent, #2563eb)",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Edit organization profile →
+          </Link>
+        </div>
         <p className="muted-text">
           {isActive
             ? "Your org is approved. Recommended tickets and active work below."
@@ -95,10 +127,13 @@ export default function Dashboard() {
           }}
         >
           <strong>Pending review</strong>
-          <p className="muted-text" style={{ margin: "4px 0 0" }}>
+          <p className="muted-text" style={{ margin: "4px 0 8px" }}>
             A Platform Admin will approve your documents shortly. You&apos;ll get
             access to matching and ticket-raising once that happens.
           </p>
+          <Link href="/onboard" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-accent, #2563eb)" }}>
+            Add or update documents →
+          </Link>
         </div>
       )}
 
