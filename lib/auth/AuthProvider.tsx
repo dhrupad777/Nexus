@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
+import { onIdTokenChanged, type User } from "firebase/auth";
 import { auth, getAppCheckClient } from "@/lib/firebase/client";
 
 type AuthCtx = {
@@ -21,7 +21,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // App Check must initialize on the client before any secured call.
     getAppCheckClient();
 
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    // onIdTokenChanged fires on sign-in/out AND token refresh, so claims set
+    // by bootstrapPlatformAdmin (which calls getIdToken(true)) flow into state
+    // without requiring a sign-out/sign-in cycle.
+    const unsub = onIdTokenChanged(auth, async (u) => {
       setUser(u);
       if (u) {
         const tokenResult = await u.getIdTokenResult();

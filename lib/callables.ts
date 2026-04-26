@@ -44,3 +44,8 @@ export const callRecordSignoff = make<
   RecordSignoffInput,
   { signoffId: string }
 >("recordSignoff");
+
+export const callApproveOrg = make<
+  { orgId: string; requestId: string },
+  { ok: true; orgId: string; affectedUsers: number }
+>("approveOrg");
