@@ -25,6 +25,10 @@ function randomRequestId(): string {
   return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+// Every Firestore read goes through a normalizer — never a bare `as` cast.
+// Legacy docs may be missing fields the schema later added; the normalizer
+// applies safe defaults once, so render code can trust the shape.
+
 interface TicketDoc {
   hostOrgId: string;
   host: { name: string; type: "NGO" | "ORG" };
@@ -33,7 +37,7 @@ interface TicketDoc {
   category: string;
   urgency: "NORMAL" | "EMERGENCY";
   rapid: boolean;
-  needs?: Array<{
+  needs: Array<{
     resourceCategory: string;
     subtype?: string;
     quantity: number;
@@ -41,12 +45,12 @@ interface TicketDoc {
     valuationINR: number;
     progressPct: number;
   }>;
-  geo?: { adminRegion?: string };
+  geo: { adminRegion: string };
   deadline: number;
   phase: "RAISED" | "OPEN_FOR_CONTRIBUTIONS" | "EXECUTION" | "PENDING_SIGNOFF" | "CLOSED";
   progressPct: number;
-  participantOrgIds?: string[];
-  contributorCount?: number;
+  participantOrgIds: string[];
+  contributorCount: number;
 }
 
 interface MatchDoc {
@@ -58,6 +62,78 @@ interface MatchDoc {
   contributionImpactPct: number;
   geoDistanceKm?: number;
   rapidBroadcast: boolean;
+}
+
+function parseTicket(raw: unknown): TicketDoc {
+  const d = (raw ?? {}) as Record<string, unknown>;
+
+  const hostRaw = (d.host ?? {}) as { name?: unknown; type?: unknown };
+  const host: TicketDoc["host"] = {
+    name: typeof hostRaw.name === "string" && hostRaw.name ? hostRaw.name : "—",
+    type: hostRaw.type === "NGO" ? "NGO" : "ORG",
+  };
+
+  const needs: TicketDoc["needs"] = Array.isArray(d.needs)
+    ? d.needs.map((n) => {
+        const x = (n ?? {}) as Record<string, unknown>;
+        return {
+          resourceCategory: String(x.resourceCategory ?? ""),
+          subtype: typeof x.subtype === "string" ? x.subtype : undefined,
+          quantity: Number(x.quantity ?? 0),
+          unit: String(x.unit ?? ""),
+          valuationINR: Number(x.valuationINR ?? 0),
+          progressPct: Number(x.progressPct ?? 0),
+        };
+      })
+    : [];
+
+  const geoRaw = (d.geo ?? {}) as { adminRegion?: unknown };
+  const geo: TicketDoc["geo"] = {
+    adminRegion: typeof geoRaw.adminRegion === "string" ? geoRaw.adminRegion : "—",
+  };
+
+  const phaseRaw = d.phase;
+  const phase: TicketDoc["phase"] =
+    phaseRaw === "RAISED" ||
+    phaseRaw === "OPEN_FOR_CONTRIBUTIONS" ||
+    phaseRaw === "EXECUTION" ||
+    phaseRaw === "PENDING_SIGNOFF" ||
+    phaseRaw === "CLOSED"
+      ? phaseRaw
+      : "OPEN_FOR_CONTRIBUTIONS";
+
+  return {
+    hostOrgId: typeof d.hostOrgId === "string" ? d.hostOrgId : "",
+    host,
+    title: typeof d.title === "string" && d.title ? d.title : "(untitled)",
+    description: typeof d.description === "string" ? d.description : "",
+    category: typeof d.category === "string" ? d.category : "",
+    urgency: d.urgency === "EMERGENCY" ? "EMERGENCY" : "NORMAL",
+    rapid: Boolean(d.rapid),
+    needs,
+    geo,
+    deadline: typeof d.deadline === "number" ? d.deadline : 0,
+    phase,
+    progressPct: Number(d.progressPct ?? 0),
+    participantOrgIds: Array.isArray(d.participantOrgIds)
+      ? d.participantOrgIds.filter((x): x is string => typeof x === "string")
+      : [],
+    contributorCount: Number(d.contributorCount ?? 0),
+  };
+}
+
+function parseMatch(raw: unknown): MatchDoc {
+  const d = (raw ?? {}) as Record<string, unknown>;
+  return {
+    ticketId: typeof d.ticketId === "string" ? d.ticketId : "",
+    topResourceId: typeof d.topResourceId === "string" ? d.topResourceId : "",
+    bestNeedIndex: Number(d.bestNeedIndex ?? 0),
+    maxContributionPossible: Number(d.maxContributionPossible ?? 0),
+    contributionFeasibility: Boolean(d.contributionFeasibility),
+    contributionImpactPct: Number(d.contributionImpactPct ?? 0),
+    geoDistanceKm: typeof d.geoDistanceKm === "number" ? d.geoDistanceKm : undefined,
+    rapidBroadcast: Boolean(d.rapidBroadcast),
+  };
 }
 
 interface ContributionDoc {
@@ -95,7 +171,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
           setTicket(null);
           return;
         }
-        setTicket(snap.data() as TicketDoc);
+        setTicket(parseTicket(snap.data()));
       },
       () => setTicket(null),
     );
@@ -110,7 +186,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
     }
     const unsub = onSnapshot(
       doc(db, "matches", `${ticketId}__${orgId}`),
-      (snap) => setMatch(snap.exists() ? (snap.data() as MatchDoc) : null),
+      (snap) => setMatch(snap.exists() ? parseMatch(snap.data()) : null),
       () => setMatch(null),
     );
     return unsub;
@@ -145,7 +221,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   // Hydrate contributor org names — single batched fetch, not realtime.
   const contributorOrgIds = useMemo(() => {
     if (!ticket) return [] as string[];
-    return (ticket.participantOrgIds ?? []).filter((id) => id !== ticket.hostOrgId);
+    return ticket.participantOrgIds.filter((id) => id !== ticket.hostOrgId);
   }, [ticket]);
 
   useEffect(() => {
@@ -240,7 +316,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
           {ticket.description}
         </p>
         <span className="muted-text" style={{ fontSize: 13 }}>
-          {ticket.geo?.adminRegion ?? "—"} · Deadline {new Date(ticket.deadline).toLocaleDateString()}
+          {ticket.geo.adminRegion} · Deadline {new Date(ticket.deadline).toLocaleDateString()}
         </span>
       </header>
 
@@ -274,7 +350,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
       {/* Per-need rows */}
       <section className="stack-sm">
         <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Needs</h2>
-        {(ticket.needs ?? []).map((n, i) => {
+        {ticket.needs.map((n, i) => {
           const fulfilled = (n.quantity * n.progressPct) / 100;
           const remaining = Math.max(0, n.quantity - fulfilled);
           return (
@@ -333,7 +409,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
           <p style={{ margin: 0, fontSize: 14 }}>
             You can fill <strong>{Math.round(match.contributionImpactPct)}%</strong>{" "}
             of remaining
-            {ticket.needs?.[match.bestNeedIndex] && (
+            {ticket.needs[match.bestNeedIndex] && (
               <>
                 {" "}
                 ({formatQty(match.maxContributionPossible)}{" "}
@@ -418,7 +494,7 @@ function PledgeCTA({
   return (
     <PledgeForm
       ticketId={ticketId}
-      needs={ticket.needs ?? []}
+      needs={ticket.needs}
       match={match}
     />
   );

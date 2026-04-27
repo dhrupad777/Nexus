@@ -5,14 +5,18 @@ import { adminDb, adminStorage } from "@/lib/firebase/admin";
 
 export const revalidate = 60;
 
+// Every Firestore read goes through a normalizer — never a bare `as` cast.
+// Legacy docs may be missing fields the schema later added; the normalizer
+// applies safe defaults once, so render code can trust the shape.
+
 interface TicketDoc {
   hostOrgId: string;
-  host?: { name?: string; type?: "NGO" | "ORG" };
+  host: { name: string; type: "NGO" | "ORG" };
   title: string;
   description: string;
   category: string;
   rapid: boolean;
-  needs?: Array<{
+  needs: Array<{
     resourceCategory: string;
     subtype?: string;
     quantity: number;
@@ -20,11 +24,11 @@ interface TicketDoc {
     valuationINR: number;
     progressPct: number;
   }>;
-  geo?: { adminRegion?: string };
+  geo: { adminRegion: string };
   phase: string;
   progressPct: number;
-  participantOrgIds?: string[];
-  closedAt?: number | null;
+  participantOrgIds: string[];
+  closedAt: number | null;
 }
 
 interface BadgeDoc {
@@ -34,6 +38,59 @@ interface BadgeDoc {
   contributedValuationINR: number;
   proportionalSharePct: number;
   scorePct: number;
+}
+
+function parseTicket(raw: unknown): TicketDoc {
+  const d = (raw ?? {}) as Record<string, unknown>;
+  const hostRaw = (d.host ?? {}) as { name?: unknown; type?: unknown };
+  const host: TicketDoc["host"] = {
+    name: typeof hostRaw.name === "string" && hostRaw.name ? hostRaw.name : "—",
+    type: hostRaw.type === "NGO" ? "NGO" : "ORG",
+  };
+  const needs: TicketDoc["needs"] = Array.isArray(d.needs)
+    ? d.needs.map((n) => {
+        const x = (n ?? {}) as Record<string, unknown>;
+        return {
+          resourceCategory: String(x.resourceCategory ?? ""),
+          subtype: typeof x.subtype === "string" ? x.subtype : undefined,
+          quantity: Number(x.quantity ?? 0),
+          unit: String(x.unit ?? ""),
+          valuationINR: Number(x.valuationINR ?? 0),
+          progressPct: Number(x.progressPct ?? 0),
+        };
+      })
+    : [];
+  const geoRaw = (d.geo ?? {}) as { adminRegion?: unknown };
+  return {
+    hostOrgId: typeof d.hostOrgId === "string" ? d.hostOrgId : "",
+    host,
+    title: typeof d.title === "string" && d.title ? d.title : "(untitled)",
+    description: typeof d.description === "string" ? d.description : "",
+    category: typeof d.category === "string" ? d.category : "",
+    rapid: Boolean(d.rapid),
+    needs,
+    geo: {
+      adminRegion: typeof geoRaw.adminRegion === "string" ? geoRaw.adminRegion : "—",
+    },
+    phase: typeof d.phase === "string" ? d.phase : "",
+    progressPct: Number(d.progressPct ?? 0),
+    participantOrgIds: Array.isArray(d.participantOrgIds)
+      ? d.participantOrgIds.filter((x): x is string => typeof x === "string")
+      : [],
+    closedAt: typeof d.closedAt === "number" ? d.closedAt : null,
+  };
+}
+
+function parseBadge(raw: unknown): BadgeDoc {
+  const d = (raw ?? {}) as Record<string, unknown>;
+  return {
+    ticketId: typeof d.ticketId === "string" ? d.ticketId : "",
+    orgId: typeof d.orgId === "string" ? d.orgId : "",
+    role: d.role === "HOST" ? "HOST" : "CONTRIBUTOR",
+    contributedValuationINR: Number(d.contributedValuationINR ?? 0),
+    proportionalSharePct: Number(d.proportionalSharePct ?? 0),
+    scorePct: Number(d.scorePct ?? 0),
+  };
 }
 
 interface ProofWithUrl {
@@ -48,7 +105,7 @@ const loadTicket = cache(async (id: string): Promise<TicketDoc | null> => {
   try {
     const snap = await adminDb.collection("tickets").doc(id).get();
     if (!snap.exists) return null;
-    const data = snap.data() as TicketDoc;
+    const data = parseTicket(snap.data());
     if (data.phase !== "CLOSED") return null;
     return data;
   } catch {
@@ -58,7 +115,7 @@ const loadTicket = cache(async (id: string): Promise<TicketDoc | null> => {
 
 async function loadBadges(ticketId: string): Promise<BadgeDoc[]> {
   const snap = await adminDb.collection("badges").where("ticketId", "==", ticketId).get();
-  return snap.docs.map((d) => d.data() as BadgeDoc);
+  return snap.docs.map((d) => parseBadge(d.data()));
 }
 
 async function loadOrgNames(orgIds: string[]): Promise<Record<string, string>> {
@@ -171,16 +228,12 @@ export default async function PublicTicketPage({
             </span>
             <span className="muted-text" style={{ fontSize: 12 }}>·</span>
             <span style={{ fontSize: 12, color: "var(--color-muted)" }}>
-              Hosted by {ticket.host?.name ?? "—"} · {ticket.host?.type ?? "ORG"}
+              Hosted by {ticket.host.name} · {ticket.host.type}
             </span>
-            {ticket.geo?.adminRegion && (
-              <>
-                <span className="muted-text" style={{ fontSize: 12 }}>·</span>
-                <span className="muted-text" style={{ fontSize: 12 }}>
-                  {ticket.geo.adminRegion}
-                </span>
-              </>
-            )}
+            <span className="muted-text" style={{ fontSize: 12 }}>·</span>
+            <span className="muted-text" style={{ fontSize: 12 }}>
+              {ticket.geo.adminRegion}
+            </span>
           </div>
           <h1
             style={{
@@ -207,15 +260,15 @@ export default async function PublicTicketPage({
           </div>
           <span className="muted-text" style={{ fontSize: 13 }}>
             {badges.length} {badges.length === 1 ? "participant" : "participants"} ·{" "}
-            {ticket.needs?.length ?? 0}{" "}
-            {(ticket.needs?.length ?? 0) === 1 ? "need" : "needs"} fulfilled
+            {ticket.needs.length}{" "}
+            {ticket.needs.length === 1 ? "need" : "needs"} fulfilled
           </span>
         </div>
 
-        {(ticket.needs?.length ?? 0) > 0 && (
+        {ticket.needs.length > 0 && (
           <section className="stack-sm">
             <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>What was delivered</h2>
-            {ticket.needs!.map((n, i) => (
+            {ticket.needs.map((n, i) => (
               <div key={i} className="card stack-sm">
                 <div
                   className="row"

@@ -7,17 +7,21 @@ import { HomeTopbar } from "../../_components/HomeTopbar";
 
 export const revalidate = 60;
 
+// Every Firestore read goes through a normalizer — never a bare `as` cast.
+// Legacy docs may be missing fields the schema later added; the normalizer
+// applies safe defaults once, so render code can trust the shape.
+
 interface OrgDoc {
   name: string;
   type: "NGO" | "ORG";
   status: string;
-  geo?: { adminRegion?: string };
-  reliability?: {
-    agreement?: { score?: number };
-    execution?: { score?: number };
-    closure?: { score?: number };
+  geo: { adminRegion: string };
+  reliability: {
+    agreement: { score: number };
+    execution: { score: number };
+    closure: { score: number };
   };
-  createdAt?: number;
+  createdAt: number | null;
 }
 
 interface BadgeDoc {
@@ -32,6 +36,45 @@ interface BadgeDoc {
   closedAt: number;
 }
 
+function parseOrg(raw: unknown): OrgDoc {
+  const d = (raw ?? {}) as Record<string, unknown>;
+  const geoRaw = (d.geo ?? {}) as { adminRegion?: unknown };
+  const relRaw = (d.reliability ?? {}) as Record<string, unknown>;
+  const stat = (key: string): { score: number } => {
+    const s = (relRaw[key] ?? {}) as { score?: unknown };
+    return { score: Number(s.score ?? 0) };
+  };
+  return {
+    name: typeof d.name === "string" && d.name ? d.name : "Untitled organization",
+    type: d.type === "NGO" ? "NGO" : "ORG",
+    status: typeof d.status === "string" ? d.status : "",
+    geo: {
+      adminRegion: typeof geoRaw.adminRegion === "string" ? geoRaw.adminRegion : "—",
+    },
+    reliability: {
+      agreement: stat("agreement"),
+      execution: stat("execution"),
+      closure: stat("closure"),
+    },
+    createdAt: typeof d.createdAt === "number" ? d.createdAt : null,
+  };
+}
+
+function parseBadge(raw: unknown): BadgeDoc {
+  const d = (raw ?? {}) as Record<string, unknown>;
+  return {
+    ticketId: typeof d.ticketId === "string" ? d.ticketId : "",
+    orgId: typeof d.orgId === "string" ? d.orgId : "",
+    role: d.role === "HOST" ? "HOST" : "CONTRIBUTOR",
+    ticketTitle: typeof d.ticketTitle === "string" ? d.ticketTitle : "(untitled)",
+    ticketCategory: typeof d.ticketCategory === "string" ? d.ticketCategory : "",
+    contributedValuationINR: Number(d.contributedValuationINR ?? 0),
+    proportionalSharePct: Number(d.proportionalSharePct ?? 0),
+    scorePct: Number(d.scorePct ?? 0),
+    closedAt: Number(d.closedAt ?? 0),
+  };
+}
+
 interface ResourceSummary {
   category: string;
   count: number;
@@ -42,7 +85,7 @@ const loadOrg = cache(async (orgId: string): Promise<OrgDoc | null> => {
   try {
     const snap = await adminDb.collection("organizations").doc(orgId).get();
     if (!snap.exists) return null;
-    const data = snap.data() as OrgDoc;
+    const data = parseOrg(snap.data());
     if (data.status !== "ACTIVE") return null;
     return data;
   } catch {
@@ -58,7 +101,7 @@ async function loadBadges(orgId: string): Promise<BadgeDoc[]> {
       .orderBy("closedAt", "desc")
       .limit(60)
       .get();
-    return snap.docs.map((d) => d.data() as BadgeDoc);
+    return snap.docs.map((d) => parseBadge(d.data()));
   } catch {
     return [];
   }
@@ -96,7 +139,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const org = await loadOrg(slug);
   if (!org) return { title: "Organization — Nexus" };
-  const desc = `${org.name} — verified ${org.type} on Nexus${org.geo?.adminRegion ? ` (${org.geo.adminRegion})` : ""}.`;
+  const desc = `${org.name} — verified ${org.type} on Nexus (${org.geo.adminRegion}).`;
   return {
     title: `${org.name} — Nexus`,
     description: desc,
@@ -127,9 +170,9 @@ export default async function PublicOrgPage({
     : "—";
 
   const reliability = {
-    agreement: Number(org.reliability?.agreement?.score ?? 0),
-    execution: Number(org.reliability?.execution?.score ?? 0),
-    closure: Number(org.reliability?.closure?.score ?? 0),
+    agreement: org.reliability.agreement.score,
+    execution: org.reliability.execution.score,
+    closure: org.reliability.closure.score,
   };
 
   const totalDelivered = badges.reduce(
@@ -176,16 +219,10 @@ export default async function PublicOrgPage({
               >
                 Verified · {verified}
               </span>
-              {org.geo?.adminRegion && (
-                <>
-                  <span className="muted-text" style={{ fontSize: 12 }}>
-                    ·
-                  </span>
-                  <span className="muted-text" style={{ fontSize: 12 }}>
-                    {org.geo.adminRegion}
-                  </span>
-                </>
-              )}
+              <span className="muted-text" style={{ fontSize: 12 }}>·</span>
+              <span className="muted-text" style={{ fontSize: 12 }}>
+                {org.geo.adminRegion}
+              </span>
             </div>
             <h1
               style={{
