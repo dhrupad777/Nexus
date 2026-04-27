@@ -16,7 +16,7 @@ import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { toast } from "sonner";
 import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { callAdvancePhase, callRecordSignoff } from "@/lib/callables";
+import { callAdvancePhase, callRecordSignoff, callRespondToPledge } from "@/lib/callables";
 import { authErrorToMessage } from "@/lib/auth/errors";
 import { PledgeForm } from "./PledgeForm";
 
@@ -259,9 +259,14 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   }
 
   const isHost = orgId === ticket.hostOrgId;
+  // Treat REJECTED contributions as not blocking — the host turned them
+  // down, the contributor can pledge again with a different resource.
   const myContribution = orgId
-    ? contribs.find((c) => c.contributorOrgId === orgId)
+    ? contribs.find((c) => c.contributorOrgId === orgId && c.status !== "REJECTED")
     : undefined;
+  const proposedForHost = isHost
+    ? contribs.filter((c) => c.status === "PROPOSED")
+    : [];
   const phase = PHASE_LABEL[ticket.phase];
 
   return (
@@ -433,7 +438,11 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
 
       {myContribution && (
         <div className="card stack-sm" style={{ borderColor: "var(--color-accent, #2563eb)" }}>
-          <strong>Your contribution is committed</strong>
+          <strong>
+            {myContribution.status === "PROPOSED"
+              ? "Your pledge is awaiting host approval"
+              : "Your contribution"}
+          </strong>
           <span style={{ fontSize: 13 }}>
             {formatQty(myContribution.offered.quantity)} {myContribution.offered.unit} ·
             status <strong>{myContribution.status}</strong>
@@ -444,6 +453,15 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
       {/* Host lifecycle controls */}
       {isHost && (
         <HostLifecyclePanel ticketId={ticketId} ticket={ticket} />
+      )}
+
+      {/* Host: proposed pledges awaiting decision */}
+      {isHost && proposedForHost.length > 0 && (
+        <ProposedPledgesPanel
+          ticketId={ticketId}
+          proposed={proposedForHost}
+          orgNames={orgNames}
+        />
       )}
 
       {/* Contributor signoff panel */}
@@ -495,6 +513,7 @@ function PledgeCTA({
     <PledgeForm
       ticketId={ticketId}
       needs={ticket.needs}
+      rapid={ticket.rapid}
       match={match}
     />
   );
@@ -678,6 +697,124 @@ function SignoffPanel({ ticketId }: { ticketId: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+function ProposedPledgesPanel({
+  ticketId,
+  proposed,
+  orgNames,
+}: {
+  ticketId: string;
+  proposed: ContributionDoc[];
+  orgNames: Record<string, string>;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+
+  async function respond(
+    contributionId: string,
+    decision: "APPROVE" | "REJECT",
+    rejectNote?: string,
+  ) {
+    setBusyId(contributionId);
+    try {
+      await callRespondToPledge({
+        ticketId,
+        contributionId,
+        decision,
+        note: rejectNote ?? "",
+        requestId: randomRequestId(),
+      });
+      toast.success(
+        decision === "APPROVE" ? "Pledge approved." : "Pledge rejected.",
+      );
+      setRejectingId(null);
+      setNote("");
+    } catch (err) {
+      toast.error(authErrorToMessage(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <section className="stack-sm">
+      <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
+        Proposed pledges ({proposed.length})
+      </h2>
+      <p className="muted-text" style={{ margin: 0, fontSize: 13 }}>
+        Approving reserves the contributor&apos;s resource and moves your progress bar.
+        Rejecting frees nothing — the contributor can re-pledge with a different resource.
+      </p>
+      {proposed.map((c) => {
+        const isRejecting = rejectingId === c.id;
+        return (
+          <div key={c.id} className="card stack-sm">
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+              <strong>{orgNames[c.contributorOrgId] ?? c.contributorOrgId.slice(0, 6)}</strong>
+              <span style={{ fontSize: 13 }}>
+                {formatQty(c.offered.quantity)} {c.offered.unit} · need #{c.needIndex + 1}
+              </span>
+            </div>
+            {isRejecting && (
+              <input
+                type="text"
+                className="input"
+                placeholder="Reason (optional)"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                disabled={busyId === c.id}
+                maxLength={500}
+              />
+            )}
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => respond(c.id, "APPROVE")}
+                disabled={busyId === c.id}
+              >
+                {busyId === c.id ? "Working…" : "Approve"}
+              </button>
+              {!isRejecting ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setRejectingId(c.id)}
+                  disabled={busyId !== null}
+                >
+                  Reject
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => respond(c.id, "REJECT", note)}
+                    disabled={busyId === c.id}
+                  >
+                    Confirm reject
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setRejectingId(null);
+                      setNote("");
+                    }}
+                    disabled={busyId === c.id}
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 

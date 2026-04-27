@@ -37,6 +37,7 @@ export { approveOrg } from "./callables/approveOrg";
 export { raiseTicket } from "./callables/raiseTicket";
 export { createResource } from "./callables/createResource";
 export { pledge } from "./callables/pledge";
+export { respondToPledge } from "./callables/respondToPledge";
 export { signAgreement } from "./callables/signAgreement";
 export { advancePhase } from "./callables/advancePhase";
 export { recordSignoff } from "./callables/recordSignoff";

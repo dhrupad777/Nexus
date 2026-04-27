@@ -69,6 +69,17 @@ export const advancePhase = onCall({ cors: true }, async (request) => {
         const committed = await tx.get(
           contributionsRef.where("status", "==", "COMMITTED"),
         );
+        if (committed.empty) {
+          // V9: a ticket with no committed contributions has nothing to
+          // execute. Host self-pledges live on the ticket itself, not as
+          // contribution docs, so this still allows host-only tickets only
+          // if they self-pledged 100% — but those don't need an EXECUTION
+          // phase advance because they advance via close path elsewhere.
+          throw new HttpsError(
+            "failed-precondition",
+            "Cannot advance to EXECUTION with zero COMMITTED contributions.",
+          );
+        }
 
         const progressPct = Number(ticket.progressPct ?? 0);
         tx.update(ticketRef, {
@@ -93,11 +104,22 @@ export const advancePhase = onCall({ cors: true }, async (request) => {
         );
       }
 
-      const proofs = await tx.get(photoProofsRef.limit(1));
+      const [proofs, executed] = await Promise.all([
+        tx.get(photoProofsRef.limit(1)),
+        tx.get(contributionsRef.where("status", "==", "EXECUTED").limit(1)),
+      ]);
       if (proofs.empty) {
         throw new HttpsError(
           "failed-precondition",
           "Upload at least one photo proof before marking execution complete.",
+        );
+      }
+      if (executed.empty) {
+        // V11 defensive: signoff stage requires at least one EXECUTED
+        // contribution, otherwise onSignoffRecorded has nothing to verify.
+        throw new HttpsError(
+          "failed-precondition",
+          "No EXECUTED contributions; nothing to sign off on.",
         );
       }
 
