@@ -42,6 +42,13 @@ export function AppTopbar() {
         <NexusLogo size="sm" />
       </Link>
       <div className="row" style={{ gap: 8 }}>
+        <Link
+          href="/resources"
+          className="btn btn-ghost"
+          style={{ padding: "8px 14px", fontSize: 13 }}
+        >
+          Resources
+        </Link>
         <Link href="/profile" className="profile-pill" aria-label="Account">
           <span className="profile-pill__avatar" aria-hidden>{avatar}</span>
           <span className="profile-pill__label">{label}</span>

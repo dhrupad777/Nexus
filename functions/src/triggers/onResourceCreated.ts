@@ -15,7 +15,7 @@ import { GoogleGenAI } from "@google/genai";
  * Generative Language API as the onboarding chat model. No Vertex auth needed.
  */
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-const MODEL = "text-embedding-004";
+const MODEL = "gemini-embedding-001";
 const EMBEDDING_DIM = 768;
 
 function buildEmbeddingInput(data: admin.firestore.DocumentData): string {
@@ -30,6 +30,7 @@ async function embedOnce(ai: GoogleGenAI, text: string): Promise<number[]> {
   const resp = await ai.models.embedContent({
     model: MODEL,
     contents: text,
+    config: { outputDimensionality: EMBEDDING_DIM },
   });
   const values = resp.embeddings?.[0]?.values;
   if (!values || values.length !== EMBEDDING_DIM) {
