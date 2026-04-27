@@ -259,14 +259,25 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   }
 
   const isHost = orgId === ticket.hostOrgId;
-  // Treat REJECTED contributions as not blocking — the host turned them
-  // down, the contributor can pledge again with a different resource.
-  const myContribution = orgId
-    ? contribs.find((c) => c.contributorOrgId === orgId && c.status !== "REJECTED")
-    : undefined;
+  // Multiple non-REJECTED contributions per (ticket, org) are now allowed
+  // to support incremental partial fulfillment. REJECTED contributions are
+  // historical and don't block re-pledging.
+  const myContributions = orgId
+    ? contribs.filter((c) => c.contributorOrgId === orgId && c.status !== "REJECTED")
+    : [];
+  const hasExecutedSelf = myContributions.some((c) => c.status === "EXECUTED");
   const proposedForHost = isHost
     ? contribs.filter((c) => c.status === "PROPOSED")
     : [];
+
+  // Sum of non-REJECTED contribution quantities per need index — mirrors
+  // the server-side per-need cap so PledgeForm can clamp input client-side.
+  const fulfilledByNeed = ticket.needs.map((_, i) =>
+    contribs
+      .filter((c) => c.status !== "REJECTED" && c.needIndex === i)
+      .reduce((sum, c) => sum + c.offered.quantity, 0),
+  );
+
   const phase = PHASE_LABEL[ticket.phase];
 
   return (
@@ -403,7 +414,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
       </section>
 
       {/* Your contribution potential — match-doc backed */}
-      {!isHost && match?.contributionFeasibility && !myContribution && (
+      {!isHost && match?.contributionFeasibility && myContributions.length === 0 && (
         <div
           className="card stack-sm"
           style={{
@@ -426,28 +437,23 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
         </div>
       )}
 
-      {/* Pledge CTA */}
-      {!isHost && (
-        <PledgeCTA
+      {/* Pledge CTA — always visible while ticket is OPEN, regardless of
+          prior contributions. Supports incremental partial pledging
+          (50 today, 30 next week). PledgeForm itself disables submit if
+          the contributor has no eligible resource with free quantity. */}
+      {!isHost && ticket.phase === "OPEN_FOR_CONTRIBUTIONS" && (
+        <PledgeForm
           ticketId={ticketId}
-          ticket={ticket}
+          needs={ticket.needs}
+          rapid={ticket.rapid}
           match={match}
-          alreadyPledged={Boolean(myContribution)}
+          fulfilledByNeed={fulfilledByNeed}
         />
       )}
 
-      {myContribution && (
-        <div className="card stack-sm" style={{ borderColor: "var(--color-accent, #2563eb)" }}>
-          <strong>
-            {myContribution.status === "PROPOSED"
-              ? "Your pledge is awaiting host approval"
-              : "Your contribution"}
-          </strong>
-          <span style={{ fontSize: 13 }}>
-            {formatQty(myContribution.offered.quantity)} {myContribution.offered.unit} ·
-            status <strong>{myContribution.status}</strong>
-          </span>
-        </div>
+      {/* Your contributions — one card per non-REJECTED contribution. */}
+      {myContributions.length > 0 && (
+        <MyContributionsPanel contributions={myContributions} />
       )}
 
       {/* Host lifecycle controls */}
@@ -464,8 +470,9 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
         />
       )}
 
-      {/* Contributor signoff panel */}
-      {!isHost && myContribution && ticket.phase === "PENDING_SIGNOFF" && myContribution.status === "EXECUTED" && (
+      {/* Contributor signoff panel — single signoff covers ALL of this
+          contributor's EXECUTED contributions on this ticket. */}
+      {!isHost && hasExecutedSelf && ticket.phase === "PENDING_SIGNOFF" && (
         <SignoffPanel ticketId={ticketId} />
       )}
 
@@ -496,26 +503,43 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   );
 }
 
-function PledgeCTA({
-  ticketId,
-  ticket,
-  match,
-  alreadyPledged,
-}: {
-  ticketId: string;
-  ticket: TicketDoc;
-  match: MatchDoc | null;
-  alreadyPledged: boolean;
-}) {
-  if (alreadyPledged) return null;
-  if (ticket.phase !== "OPEN_FOR_CONTRIBUTIONS") return null;
+function MyContributionsPanel({ contributions }: { contributions: ContributionDoc[] }) {
+  const totalQty = contributions.reduce((acc, c) => acc + c.offered.quantity, 0);
+  const unit = contributions[0]?.offered.unit ?? "";
+  const proposedCount = contributions.filter((c) => c.status === "PROPOSED").length;
+
   return (
-    <PledgeForm
-      ticketId={ticketId}
-      needs={ticket.needs}
-      rapid={ticket.rapid}
-      match={match}
-    />
+    <section className="card stack-sm" style={{ borderColor: "var(--color-accent, #2563eb)" }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+        <strong>
+          Your contributions ({contributions.length})
+        </strong>
+        <span style={{ fontSize: 13 }}>
+          {formatQty(totalQty)} {unit} total
+          {proposedCount > 0 ? ` · ${proposedCount} awaiting host approval` : ""}
+        </span>
+      </div>
+      <div className="stack-sm" style={{ gap: 6 }}>
+        {contributions.map((c) => (
+          <div
+            key={c.id}
+            className="row"
+            style={{
+              justifyContent: "space-between",
+              padding: "6px 10px",
+              background: "var(--color-surface-2, #f6f7f9)",
+              borderRadius: 6,
+              fontSize: 13,
+            }}
+          >
+            <span>
+              {formatQty(c.offered.quantity)} {c.offered.unit} · need #{c.needIndex + 1}
+            </span>
+            <strong>{c.status}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -638,12 +662,13 @@ function SignoffPanel({ ticketId }: { ticketId: string }) {
   const [busy, setBusy] = useState(false);
   const [showDispute, setShowDispute] = useState(false);
   const [note, setNote] = useState("");
-  const requestId = useMemo(randomRequestId, []);
 
   async function submit(decision: "APPROVED" | "DISPUTED") {
     setBusy(true);
     try {
-      await callRecordSignoff({ ticketId, decision, note, requestId });
+      // Fresh requestId per click — APPROVED then DISPUTED on retry is a
+      // logically distinct call, not a network retry.
+      await callRecordSignoff({ ticketId, decision, note, requestId: randomRequestId() });
       toast.success(decision === "APPROVED" ? "Delivery confirmed." : "Dispute recorded.");
     } catch (err) {
       toast.error(authErrorToMessage(err));

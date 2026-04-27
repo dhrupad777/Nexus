@@ -43,15 +43,19 @@ export function PledgeForm({
   needs,
   rapid,
   match,
+  fulfilledByNeed,
 }: {
   ticketId: string;
   needs: NeedRow[];
   rapid: boolean;
   match: { bestNeedIndex: number; maxContributionPossible: number } | null;
+  /** Sum of non-REJECTED contribution quantities per need index, supplied
+   * by the parent so the form can cap input at the remaining headroom.
+   * Mirrors the server-side cap in pledge.ts (counts PROPOSED too). */
+  fulfilledByNeed: number[];
 }) {
   const { claims } = useAuth();
   const orgId = claims?.orgId ?? null;
-  const requestId = useMemo(randomRequestId, []);
   const initialNeed = match?.bestNeedIndex ?? 0;
 
   const [needIndex, setNeedIndex] = useState(initialNeed);
@@ -96,7 +100,9 @@ export function PledgeForm({
   }, [resources, need]);
 
   useEffect(() => {
-    // Auto-pick first eligible resource when need or list changes.
+    // Auto-pick first eligible resource when need or list changes. Suggest
+    // a quantity capped by both inventory headroom AND remaining-need
+    // capacity (sum of non-REJECTED contributions on this need).
     if (!eligible.length) {
       setResourceId("");
       setQuantity(0);
@@ -106,12 +112,18 @@ export function PledgeForm({
       const first = eligible[0];
       setResourceId(first.id);
       const free = first.quantity - first.reservedQuantity;
+      const need = needs[needIndex];
+      const fulfilled = fulfilledByNeed[needIndex] ?? 0;
+      const remainingOnNeed = need ? Math.max(0, need.quantity - fulfilled) : 0;
       const initialMax = match?.maxContributionPossible;
-      setQuantity(
-        Number(Math.min(free, initialMax && initialMax > 0 ? initialMax : free).toFixed(2)) || free,
+      const cap = Math.min(
+        free,
+        remainingOnNeed,
+        initialMax && initialMax > 0 ? initialMax : Infinity,
       );
+      setQuantity(Number(cap.toFixed(2)) || 0);
     }
-  }, [eligible, resourceId, match]);
+  }, [eligible, resourceId, match, needs, needIndex, fulfilledByNeed]);
 
   if (!need) return null;
 
@@ -119,6 +131,11 @@ export function PledgeForm({
   const free = chosen ? chosen.quantity - chosen.reservedQuantity : 0;
   const unitValuation = chosen && chosen.quantity > 0 ? chosen.valuationINR / chosen.quantity : 0;
   const projectedValuation = Math.round(unitValuation * quantity);
+  // Per-need cap mirrors the server-side check in pledge.ts (counts every
+  // non-REJECTED contribution toward "already pledged"). PROPOSED counts.
+  const fulfilledOnNeed = fulfilledByNeed[needIndex] ?? 0;
+  const remainingOnNeed = Math.max(0, need.quantity - fulfilledOnNeed);
+  const maxAllowed = Math.min(free, remainingOnNeed);
   const ratio = need.quantity > 0 ? quantity / need.quantity : 0;
   const fillsPct = Math.min(100, Math.max(0, ratio * 100));
 
@@ -127,21 +144,27 @@ export function PledgeForm({
       toast.error("Pick a listed resource to pledge from.");
       return;
     }
-    if (quantity <= 0 || quantity > free) {
+    if (quantity <= 0 || quantity > maxAllowed) {
       toast.error(
-        quantity <= 0 ? "Quantity must be positive." : `Only ${free} ${chosen?.unit ?? ""} available.`,
+        quantity <= 0
+          ? "Quantity must be positive."
+          : quantity > free
+            ? `Only ${free} ${chosen?.unit ?? ""} available in your inventory.`
+            : `Need only has ${remainingOnNeed} ${need.unit} of remaining capacity.`,
       );
       return;
     }
     setBusy(true);
     try {
+      // Mint a fresh requestId per submission so back-to-back partial
+      // pledges (50 then 30) don't collide on the idempotency key.
       const res = await callPledge({
         ticketId,
         needIndex,
         resourceId,
         quantity,
         notes,
-        requestId,
+        requestId: randomRequestId(),
       });
       if (res.status === "PROPOSED") {
         toast.success("Pledge proposed. Waiting for the host to approve it.");
@@ -203,7 +226,7 @@ export function PledgeForm({
             className="input"
             step="any"
             min={0}
-            max={free}
+            max={maxAllowed}
             value={quantity}
             onChange={(e) => setQuantity(Number(e.target.value))}
             disabled={busy || !chosen}
@@ -227,6 +250,10 @@ export function PledgeForm({
         valued at ~₹{new Intl.NumberFormat("en-IN").format(projectedValuation)} ·
         {rapid ? " commits instantly (rapid ticket)" : " awaits host approval"}
       </div>
+      <div className="muted-text" style={{ fontSize: 12 }}>
+        Remaining capacity on this need: <strong>{remainingOnNeed} {need.unit}</strong>
+        {chosen ? <> · your inventory free: <strong>{free} {chosen.unit}</strong></> : null}
+      </div>
       {eligible.length === 0 ? (
         <div className="muted-text" style={{ fontSize: 12 }}>
           You need to list a {need.resourceCategory} resource on your /resources page before pledging.
@@ -236,7 +263,7 @@ export function PledgeForm({
         type="button"
         className="btn btn-primary"
         onClick={submit}
-        disabled={busy || !resourceId || quantity <= 0 || quantity > free}
+        disabled={busy || !resourceId || quantity <= 0 || quantity > maxAllowed}
       >
         {busy ? "Submitting…" : rapid ? "Pledge now" : "Submit for approval"}
       </button>

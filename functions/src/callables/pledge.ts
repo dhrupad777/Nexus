@@ -154,18 +154,27 @@ export const pledge = onCall({ cors: true }, async (request) => {
         }
       }
 
-      // ── No-double-pledge from same org on same ticket ─────────────────
-      const existing = await tx.get(
-        contributionsRef.where("contributorOrgId", "==", orgId),
-      );
-      const hasOpenContribution = existing.docs.some((d) => {
-        const s = String(d.data().status ?? "");
-        return s !== "REJECTED";
-      });
-      if (hasOpenContribution) {
+      // Multiple pledges from the same org on the same ticket are allowed
+      // — supports incremental partial fulfillment (e.g. pledge 50 today,
+      // 30 more next week). Inventory is the only resource-side cap.
+
+      // ── Per-need cap (closes follow-up #2) ────────────────────────────
+      // Sum the quantities of every non-REJECTED contribution already on
+      // THIS need from any contributor. PROPOSED counts toward the cap so
+      // two contributors can't simultaneously pledge the same headroom.
+      const allContribs = await tx.get(contributionsRef);
+      let alreadyPledgedOnNeed = 0;
+      for (const doc of allContribs.docs) {
+        const d = doc.data();
+        if (Number(d.needIndex ?? -1) !== input.needIndex) continue;
+        if (String(d.status ?? "") === "REJECTED") continue;
+        alreadyPledgedOnNeed += Number(d.offered?.quantity ?? 0);
+      }
+      const remainingOnNeed = Math.max(0, Number(need.quantity ?? 0) - alreadyPledgedOnNeed);
+      if (input.quantity > remainingOnNeed) {
         throw new HttpsError(
-          "already-exists",
-          "Your org has already pledged to this ticket.",
+          "failed-precondition",
+          `This need has only ${remainingOnNeed} ${String(need.unit ?? "")} of remaining capacity (you asked for ${input.quantity}).`,
         );
       }
 

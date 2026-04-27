@@ -66,9 +66,13 @@ export const advancePhase = onCall({ cors: true }, async (request) => {
           );
         }
 
-        const committed = await tx.get(
-          contributionsRef.where("status", "==", "COMMITTED"),
-        );
+        // Read both COMMITTED and PROPOSED in parallel — PROPOSED gets
+        // auto-rejected so contributors aren't left with orphaned pledges
+        // the host can no longer respond to.
+        const [committed, proposed] = await Promise.all([
+          tx.get(contributionsRef.where("status", "==", "COMMITTED")),
+          tx.get(contributionsRef.where("status", "==", "PROPOSED")),
+        ]);
         if (committed.empty) {
           // V9: a ticket with no committed contributions has nothing to
           // execute. Host self-pledges live on the ticket itself, not as
@@ -91,6 +95,16 @@ export const advancePhase = onCall({ cors: true }, async (request) => {
 
         for (const doc of committed.docs) {
           tx.update(doc.ref, { status: "EXECUTED" });
+        }
+
+        // Auto-reject any pledge still PROPOSED. No inventory was reserved
+        // (PROPOSED never reserves), so just flip the status.
+        for (const doc of proposed.docs) {
+          tx.update(doc.ref, {
+            status: "REJECTED",
+            rejectedAt: now,
+            rejectReason: "auto-rejected: ticket advanced before host approved",
+          });
         }
 
         return { phase: "EXECUTION" as const };

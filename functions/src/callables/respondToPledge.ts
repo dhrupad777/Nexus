@@ -139,6 +139,33 @@ export const respondToPledge = onCall({ cors: true }, async (request) => {
       }
       const need = needs[needIndex];
       const needQty = Number(need.quantity ?? 0);
+
+      // Re-check the per-need cap. State may have drifted since the pledge
+      // landed: the host may have approved another contributor's PROPOSED
+      // first, eating the headroom this contribution was counting on. Sum
+      // every COMMITTED / EXECUTED / SIGNED_OFF on this need (excluding the
+      // contribution we're about to approve) and verify approval doesn't
+      // exceed need.quantity.
+      const ticketContribs = await tx.get(
+        ticketRef.collection("contributions"),
+      );
+      let consumedOnNeed = 0;
+      for (const doc of ticketContribs.docs) {
+        if (doc.id === input.contributionId) continue;
+        const d = doc.data();
+        if (Number(d.needIndex ?? -1) !== needIndex) continue;
+        const s = String(d.status ?? "");
+        if (s === "REJECTED" || s === "PROPOSED") continue;
+        consumedOnNeed += Number(d.offered?.quantity ?? 0);
+      }
+      const remainingOnNeed = Math.max(0, needQty - consumedOnNeed);
+      if (offeredQty > remainingOnNeed) {
+        throw new HttpsError(
+          "failed-precondition",
+          `Need only has ${remainingOnNeed} ${String(need.unit ?? "")} of remaining capacity; cannot approve a ${offeredQty}-unit pledge. Reject this proposal instead.`,
+        );
+      }
+
       const pctOfNeed = needQty > 0 ? Math.min(100, (offeredQty / needQty) * 100) : 0;
 
       const newNeedPct = Math.min(100, Number(need.progressPct ?? 0) + pctOfNeed);

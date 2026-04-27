@@ -43,6 +43,13 @@ export function AppTopbar() {
       </Link>
       <div className="row" style={{ gap: 8 }}>
         <Link
+          href="/tickets/new"
+          className="btn btn-primary"
+          style={{ padding: "8px 14px", fontSize: 13 }}
+        >
+          Raise a ticket
+        </Link>
+        <Link
           href="/resources"
           className="btn btn-ghost"
           style={{ padding: "8px 14px", fontSize: 13 }}
