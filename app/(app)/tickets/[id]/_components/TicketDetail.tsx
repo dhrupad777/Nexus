@@ -33,7 +33,7 @@ interface TicketDoc {
   category: string;
   urgency: "NORMAL" | "EMERGENCY";
   rapid: boolean;
-  needs: Array<{
+  needs?: Array<{
     resourceCategory: string;
     subtype?: string;
     quantity: number;
@@ -41,12 +41,12 @@ interface TicketDoc {
     valuationINR: number;
     progressPct: number;
   }>;
-  geo: { adminRegion: string };
+  geo?: { adminRegion?: string };
   deadline: number;
   phase: "RAISED" | "OPEN_FOR_CONTRIBUTIONS" | "EXECUTION" | "PENDING_SIGNOFF" | "CLOSED";
   progressPct: number;
-  participantOrgIds: string[];
-  contributorCount: number;
+  participantOrgIds?: string[];
+  contributorCount?: number;
 }
 
 interface MatchDoc {
@@ -145,7 +145,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   // Hydrate contributor org names — single batched fetch, not realtime.
   const contributorOrgIds = useMemo(() => {
     if (!ticket) return [] as string[];
-    return ticket.participantOrgIds.filter((id) => id !== ticket.hostOrgId);
+    return (ticket.participantOrgIds ?? []).filter((id) => id !== ticket.hostOrgId);
   }, [ticket]);
 
   useEffect(() => {
@@ -240,7 +240,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
           {ticket.description}
         </p>
         <span className="muted-text" style={{ fontSize: 13 }}>
-          {ticket.geo.adminRegion} · Deadline {new Date(ticket.deadline).toLocaleDateString()}
+          {ticket.geo?.adminRegion ?? "—"} · Deadline {new Date(ticket.deadline).toLocaleDateString()}
         </span>
       </header>
 
@@ -274,7 +274,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
       {/* Per-need rows */}
       <section className="stack-sm">
         <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Needs</h2>
-        {ticket.needs.map((n, i) => {
+        {(ticket.needs ?? []).map((n, i) => {
           const fulfilled = (n.quantity * n.progressPct) / 100;
           const remaining = Math.max(0, n.quantity - fulfilled);
           return (
@@ -333,7 +333,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
           <p style={{ margin: 0, fontSize: 14 }}>
             You can fill <strong>{Math.round(match.contributionImpactPct)}%</strong>{" "}
             of remaining
-            {ticket.needs[match.bestNeedIndex] && (
+            {ticket.needs?.[match.bestNeedIndex] && (
               <>
                 {" "}
                 ({formatQty(match.maxContributionPossible)}{" "}
@@ -418,7 +418,7 @@ function PledgeCTA({
   return (
     <PledgeForm
       ticketId={ticketId}
-      needs={ticket.needs}
+      needs={ticket.needs ?? []}
       match={match}
     />
   );

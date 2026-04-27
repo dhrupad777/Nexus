@@ -22,14 +22,17 @@ interface TicketRow {
   host: { name: string; type: "NGO" | "ORG" };
   needs: Array<{ resourceCategory: string; quantity: number; unit: string }>;
   geo?: { adminRegion?: string };
+  participantOrgIds: string[];
   createdAt: number;
 }
 
 // Until the matches pipeline is ranking by listed resources, this is a flat
-// real-time feed of every active (non-closed) ticket on the platform. When the
-// matches collection has data, swap this listener back to `matches` filtered
-// by viewer orgId.
-export function RecommendedTicketsList(_props: { orgId: string }) {
+// real-time feed of every active (non-closed) ticket on the platform — minus
+// tickets the viewer is already participating in (host or contributor), which
+// would otherwise duplicate the Active Tickets panel. When the matches
+// collection has data, swap this listener back to `matches` filtered by
+// viewer orgId.
+export function RecommendedTicketsList({ orgId }: { orgId: string }) {
   const [rows, setRows] = useState<TicketRow[] | null>(null);
 
   useEffect(() => {
@@ -54,16 +57,18 @@ export function RecommendedTicketsList(_props: { orgId: string }) {
               host: { name: String(x.host?.name ?? "—"), type: x.host?.type ?? "ORG" },
               needs: Array.isArray(x.needs) ? x.needs : [],
               geo: x.geo,
+              participantOrgIds: Array.isArray(x.participantOrgIds) ? x.participantOrgIds : [],
               createdAt: Number(x.createdAt ?? 0),
             };
           })
-          .filter((t) => t.phase !== "CLOSED");
+          .filter((t) => t.phase !== "CLOSED")
+          .filter((t) => !t.participantOrgIds.includes(orgId));
         setRows(out);
       },
       () => setRows([]),
     );
     return unsub;
-  }, []);
+  }, [orgId]);
 
   return (
     <section className="stack">
