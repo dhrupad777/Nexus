@@ -34,15 +34,24 @@ import {
  *  - Albin/Nexus_Ticket_Display_Spec.md §3.3 — projection fields.
  */
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-const EMBED_MODEL = "text-embedding-004";
+// `text-embedding-004` was retired from the v1beta API on 2026-04-27 — every
+// new call returns 404 NOT_FOUND. Switching to `gemini-embedding-001` (the
+// model `onResourceCreated` already uses); both return 768-d vectors so the
+// stored embedding shape and downstream cosine math are unchanged.
+const EMBED_MODEL = "gemini-embedding-001";
 const EMBED_DIM = 768;
 const MAX_CANDIDATES = 500;
 const TOP_K = 10;
 
 async function embedOnce(ai: GoogleGenAI, text: string): Promise<number[]> {
+  // `gemini-embedding-001` defaults to 3072-d output. We clamp to 768-d via
+  // `outputDimensionality` so the ticket vector matches the resource vector
+  // shape (set in `onResourceCreated.ts`) — required for the cosine math in
+  // the matching step to be meaningful.
   const resp = await ai.models.embedContent({
     model: EMBED_MODEL,
     contents: text,
+    config: { outputDimensionality: EMBED_DIM },
   });
   const values = resp.embeddings?.[0]?.values;
   if (!values || values.length !== EMBED_DIM) {
