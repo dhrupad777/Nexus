@@ -5558,3 +5558,465 @@ a.ed-card--lavender:hover .ed-card__arrow--purple {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ════════════════════════════════════════════════════════════════
+   DASHBOARD — RECOMMENDED FEED + RECENT CLOSURES
+   Sits beneath the editorial cards. Restores the full per-org
+   recommendations list so contributors see every ticket they could
+   pledge to (TopMatchCard above only spotlights ONE).
+   ════════════════════════════════════════════════════════════════ */
+
+.ed-feed,
+.ed-closures {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ed-feed__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 4px 4px 0;
+}
+.ed-feed__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ed-feed__eyebrow {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.ed-feed__title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: -0.022em;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text);
+}
+.ed-feed__title-soft {
+  color: var(--color-placeholder);
+  font-weight: 600;
+}
+.ed-feed__title-accent-blue {
+  color: var(--color-primary);
+}
+.ed-feed__title-accent-green {
+  color: var(--color-success);
+}
+.ed-feed__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  background: #fff;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.ed-feed__more:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.ed-feed__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.ed-feed-card {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.ed-feed-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  color: inherit;
+  border-color: var(--color-border-strong);
+}
+.ed-feed-card--rapid {
+  border-color: rgba(220, 38, 38, 0.28);
+}
+.ed-feed-card--rapid:hover {
+  border-color: var(--color-danger);
+  box-shadow: 0 8px 24px rgba(220, 38, 38, 0.12);
+}
+.ed-feed-card__cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--color-surface-2, #eef2ff);
+}
+.ed-feed-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ed-feed-card__cover-placeholder {
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(135deg, rgba(29, 78, 216, 0.18) 0%, rgba(124, 58, 237, 0.12) 100%);
+}
+.ed-feed-card__rapid-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+}
+.ed-feed-card__body {
+  padding: 16px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.ed-feed-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-muted);
+  flex-wrap: wrap;
+}
+.ed-feed-card__meta-dot {
+  color: var(--color-placeholder);
+}
+.ed-feed-card__region {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.ed-feed-card__title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ed-feed-card__need {
+  font-size: 13px;
+  color: var(--color-muted);
+  margin: 0;
+}
+.ed-feed-card__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+.ed-feed-card__impact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-success);
+}
+.ed-feed-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* ── Recent closures grid ──────────────────────────────────── */
+
+.ed-closures__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.ed-closure-card {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.ed-closure-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  color: inherit;
+  border-color: var(--color-border-strong);
+}
+.ed-closure-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ed-closure-card__award {
+  color: var(--color-success);
+}
+.ed-closure-card__role {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  flex: 1;
+}
+.ed-closure-card__when {
+  font-size: 11.5px;
+  color: var(--color-placeholder);
+  font-variant-numeric: tabular-nums;
+}
+.ed-closure-card__title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ed-closure-card__stats {
+  display: flex;
+  gap: 14px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.ed-closure-card__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ed-closure-card__stat-value {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ed-closure-card__stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-muted);
+  letter-spacing: 0.02em;
+}
+.ed-closure-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-top: 4px;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   TICKET DETAIL — Closed-state summary strip
+   Visible to everyone when phase==CLOSED. Lists every participant +
+   their proportional share + score, sourced from the `badges` collection.
+   ════════════════════════════════════════════════════════════════ */
+
+.td-closed-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 24px;
+  border-radius: var(--radius-xl);
+  background:
+    linear-gradient(135deg, rgba(5, 150, 105, 0.06) 0%, transparent 60%),
+    var(--glass-bg);
+  border: 1px solid rgba(5, 150, 105, 0.20);
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+}
+.td-closed-summary__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.td-closed-summary__title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.td-closed-summary__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-success);
+}
+.td-closed-summary__title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.18;
+  letter-spacing: -0.022em;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text);
+}
+.td-closed-summary__amount {
+  color: var(--color-success);
+}
+.td-closed-summary__title-soft {
+  color: var(--color-placeholder);
+  font-weight: 600;
+}
+
+.td-closed-summary__participants {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.td-closed-participant {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.td-closed-participant--host {
+  border-color: rgba(29, 78, 216, 0.20);
+  background:
+    linear-gradient(135deg, rgba(29, 78, 216, 0.05) 0%, transparent 60%),
+    #fff;
+}
+.td-closed-participant__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.td-closed-participant__head svg {
+  color: var(--color-success);
+  flex-shrink: 0;
+}
+.td-closed-participant--host .td-closed-participant__head svg {
+  color: var(--color-primary);
+}
+.td-closed-participant__name {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.td-closed-participant__role {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  background: var(--color-surface-2, #f3f4f6);
+  padding: 2px 7px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.td-closed-participant__role--host {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.td-closed-participant__stats {
+  display: flex;
+  gap: 14px;
+}
+.td-closed-participant__stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.td-closed-participant__stat-value {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  color: var(--color-text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.td-closed-participant__stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-muted);
+  letter-spacing: 0.02em;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Number input — kill the native spinner arrows everywhere.
+   Forms still validate as numeric via type="number" + step + min/max,
+   but the input chrome looks like a regular text field.
+   ════════════════════════════════════════════════════════════════ */
+input.input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input.input[type="number"]::-webkit-outer-spin-button,
+input.input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+

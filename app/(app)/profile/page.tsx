@@ -21,6 +21,7 @@ import { db } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useUserProfile } from "@/lib/auth/useUserProfile";
 import { signOutUser } from "@/lib/auth/actions";
+import { ProfileActiveTickets } from "./_components/ProfileActiveTickets";
 
 interface ReliabilityStat {
   score: number;
@@ -312,6 +313,9 @@ export default function ProfilePage() {
           )}
         </div>
       </div>
+
+      {/* ── Active tickets summary ── */}
+      <ProfileActiveTickets orgId={orgId} />
 
       {/* ── Verification Documents ── */}
       <div className="card stack" style={{ gap: "20px" }}>

@@ -39,6 +39,7 @@ import {
 } from "@/lib/callables";
 import { authErrorToMessage } from "@/lib/auth/errors";
 import { PledgeForm } from "./PledgeForm";
+import { ClosedSummaryStrip } from "./ClosedSummaryStrip";
 
 const TABS = ["Contributions", "Proof", "Activity"] as const;
 type Tab = (typeof TABS)[number];
@@ -388,8 +389,6 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   const myContributions = orgId
     ? contribs.filter((c) => c.contributorOrgId === orgId && c.status !== "REJECTED")
     : [];
-  const myContribution = myContributions[0];
-  const hasExecutedSelf = myContributions.some((c) => c.status === "EXECUTED");
   const proposedForHost = isHost
     ? contribs.filter((c) => c.status === "PROPOSED")
     : [];
@@ -464,6 +463,13 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
         </div>
       </header>
 
+      {/* Closed-state summary — every contributor, share %, score, total
+          mobilised. Visible regardless of viewer role; renders only when
+          phase == CLOSED. Reads `badges where ticketId` live. */}
+      {ticket.phase === "CLOSED" && (
+        <ClosedSummaryStrip ticketId={ticketId} closedAt={ticket.closedAt ?? null} />
+      )}
+
       {/* ── Two-column ── */}
       <div className="td-2col">
         {/* Coverage + needs */}
@@ -529,21 +535,32 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
               proofCount={proofs.length}
               outstandingSignoffs={contribs.filter((c) => c.status === "EXECUTED").length}
             />
-          ) : myContribution ? (
-            <ContributorPanel
-              ticketId={ticketId}
-              ticket={ticket}
-              myContribution={myContribution}
-            />
-          ) : ticket.phase === "OPEN_FOR_CONTRIBUTIONS" ? (
-            <ContributeCard
-              ticketId={ticketId}
-              ticket={ticket}
-              match={match}
-              fulfilledByNeed={fulfilledByNeed}
-            />
           ) : (
-            <ClosedOrLockedCard ticket={ticket} />
+            <>
+              {/* Existing contributions: status + (in PENDING_SIGNOFF) signoff button.
+                  Lists all of this org's non-REJECTED contributions, not just the first —
+                  partial-pledge flow per DRY_RUN C.4. */}
+              {myContributions.length > 0 && (
+                <ContributorPanel
+                  ticketId={ticketId}
+                  ticket={ticket}
+                  myContributions={myContributions}
+                />
+              )}
+              {/* Pledge form stays open during OPEN_FOR_CONTRIBUTIONS so contributors
+                  can add more on top of an existing PROPOSED/COMMITTED contribution. */}
+              {ticket.phase === "OPEN_FOR_CONTRIBUTIONS" ? (
+                <ContributeCard
+                  ticketId={ticketId}
+                  ticket={ticket}
+                  match={match}
+                  fulfilledByNeed={fulfilledByNeed}
+                  hasExistingContribution={myContributions.length > 0}
+                />
+              ) : myContributions.length === 0 ? (
+                <ClosedOrLockedCard ticket={ticket} />
+              ) : null}
+            </>
           )}
         </section>
       </div>
@@ -613,21 +630,30 @@ function ContributeCard({
   ticket,
   match,
   fulfilledByNeed,
+  hasExistingContribution,
 }: {
   ticketId: string;
   ticket: TicketDoc;
   match: MatchDoc | null;
   fulfilledByNeed: number[];
+  /** When the viewer already has at least one non-REJECTED contribution
+   * we adjust the heading + body copy so this reads as a "top-up" form
+   * rather than a first pledge. Form behaviour is identical otherwise. */
+  hasExistingContribution: boolean;
 }) {
   const canPledge = match?.contributionFeasibility ?? false;
 
   return (
     <>
-      <h2 className="td-card-title">Contribute to this ticket</h2>
+      <h2 className="td-card-title">
+        {hasExistingContribution ? "Pledge more to this ticket" : "Contribute to this ticket"}
+      </h2>
       <p className="td-contribute-body">
-        {ticket.rapid
-          ? "Rapid flow — your pledge reflects immediately. Delivery verification handled after the fact."
-          : "Structured flow — your pledge starts as PROPOSED and waits for the host to approve before reserving inventory."}
+        {hasExistingContribution
+          ? "Top up your existing pledge. Each new submission counts toward the per-need cap and your total impact."
+          : ticket.rapid
+            ? "Rapid flow — your pledge reflects immediately. Delivery verification handled after the fact."
+            : "Structured flow — your pledge starts as PROPOSED and waits for the host to approve before reserving inventory."}
       </p>
 
       {match && (
@@ -687,44 +713,62 @@ function ContributeCard({
 function ContributorPanel({
   ticketId,
   ticket,
-  myContribution,
+  myContributions,
 }: {
   ticketId: string;
   ticket: TicketDoc;
-  myContribution: ContributionDoc;
+  myContributions: ContributionDoc[];
 }) {
-  const status = STATUS_LABEL[myContribution.status];
+  // Show every non-REJECTED pledge so partial fulfillment is visible
+  // (e.g. a 50 INR pledge + a 30 INR top-up render as two rows).
+  const hasExecuted = myContributions.some((c) => c.status === "EXECUTED");
+  const allSignedOff =
+    myContributions.length > 0 &&
+    myContributions.every((c) => c.status === "SIGNED_OFF");
+
   return (
     <>
-      <h2 className="td-card-title">Your contribution</h2>
-      <div
-        style={{
-          padding: 16,
-          border: "1px solid rgba(5, 150, 105, 0.22)",
-          borderRadius: 8,
-          background: "rgba(5, 150, 105, 0.08)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-          <CheckCircle2 size={18} style={{ color: "var(--color-success)" }} />
-          <strong style={{ fontSize: 14 }}>{status?.label ?? "Committed"}</strong>
-        </div>
-        <p style={{ fontSize: 14, margin: 0 }}>
-          <span className="num">{formatQty(myContribution.offered.quantity)}</span>{" "}
-          {myContribution.offered.unit} of {myContribution.offered.kind}
-          {myContribution.committedAt && (
-            <span className="muted-text">
-              {" "}· committed {formatTime(myContribution.committedAt)}
-            </span>
-          )}
-        </p>
+      <h2 className="td-card-title">
+        Your contribution{myContributions.length === 1 ? "" : `s (${myContributions.length})`}
+      </h2>
+      <div className="stack-sm">
+        {myContributions.map((c, i) => {
+          const status = STATUS_LABEL[c.status];
+          return (
+            <div
+              key={i}
+              style={{
+                padding: 14,
+                border: "1px solid rgba(5, 150, 105, 0.22)",
+                borderRadius: 8,
+                background: "rgba(5, 150, 105, 0.08)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <CheckCircle2 size={18} style={{ color: "var(--color-success)" }} />
+                <strong style={{ fontSize: 14 }}>{status?.label ?? c.status}</strong>
+              </div>
+              <p style={{ fontSize: 14, margin: 0 }}>
+                <span className="num">{formatQty(c.offered.quantity)}</span>{" "}
+                {c.offered.unit} of {c.offered.kind}
+                {c.committedAt && (
+                  <span className="muted-text">
+                    {" "}· committed {formatTime(c.committedAt)}
+                  </span>
+                )}
+              </p>
+            </div>
+          );
+        })}
       </div>
 
-      {ticket.phase === "PENDING_SIGNOFF" && myContribution.status === "EXECUTED" && (
+      {/* Single sign-off button covers ALL of this org's EXECUTED contributions
+          on this ticket (recordSignoff multi-flips them in one transaction). */}
+      {ticket.phase === "PENDING_SIGNOFF" && hasExecuted && (
         <SignoffPanel ticketId={ticketId} />
       )}
 
-      {myContribution.status === "SIGNED_OFF" && (
+      {allSignedOff && (
         <p className="muted-text" style={{ fontSize: 13, margin: 0 }}>
           You&apos;ve confirmed delivery. The ticket auto-closes once every contributor signs off.
         </p>

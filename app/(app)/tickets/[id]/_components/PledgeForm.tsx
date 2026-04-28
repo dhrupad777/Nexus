@@ -227,8 +227,14 @@ export function PledgeForm({
             step="any"
             min={0}
             max={maxAllowed}
-            value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value))}
+            // Show an empty field instead of "0" when the cap can't auto-fill —
+            // gives the user a clean placeholder to type into.
+            value={quantity > 0 ? quantity : ""}
+            placeholder={maxAllowed > 0 ? `up to ${maxAllowed}` : "0"}
+            onChange={(e) => {
+              const v = e.target.value;
+              setQuantity(v === "" ? 0 : Number(v));
+            }}
             disabled={busy || !chosen}
           />
         </div>

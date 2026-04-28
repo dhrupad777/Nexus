@@ -15,6 +15,8 @@ import { TopMatchCard } from "./_components/TopMatchCard";
 import { AwaitsSignoffCard } from "./_components/AwaitsSignoffCard";
 import { AiMatchesCard } from "./_components/AiMatchesCard";
 import { ResourceInventoryCard } from "./_components/ResourceInventoryCard";
+import { RecommendedFeed } from "./_components/RecommendedFeed";
+import { RecentClosuresStrip } from "./_components/RecentClosuresStrip";
 import { ProfileCard } from "./_components/ProfileCard";
 
 /**
@@ -124,6 +126,16 @@ export default function Dashboard() {
         <AiMatchesCard orgId={orgId} />
         <ResourceInventoryCard orgId={orgId} />
       </div>
+
+      {/* Full recommendation feed — restored from the previous dashboard so
+          contributors see every ticket they could pledge to (the editorial
+          TopMatchCard above only spotlights the single highest-scoring one). */}
+      <RecommendedFeed orgId={orgId} />
+
+      {/* Recent closures — every closed ticket the org participated in,
+          driven by the badges collection. Naturally appears on every
+          contributor's dashboard the moment a ticket they touched closes. */}
+      <RecentClosuresStrip orgId={orgId} />
 
       {!orgRecord.loading && orgRecord.exists && !orgRecord.isComplete && (
         <ProfileCard orgRecord={orgRecord} />
