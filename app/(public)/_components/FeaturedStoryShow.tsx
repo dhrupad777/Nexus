@@ -31,22 +31,6 @@ type Story = {
 // disappears entirely. New tickets that close show up here automatically.
 const FALLBACK_STORIES: Story[] = [
   {
-    id: "child_hunger",
-    photo: "/photos/child_hunger.png",
-    photoAlt: "Children eating hot midday meals at a community kitchen",
-    ticket: "T-0318",
-    title: "Daily meals for 612 children, 90 days straight",
-    location: "Dharavi, Mumbai",
-    duration: "90 days",
-    outcome:
-      "Akshaya Patra and CareIndia co-funded a community kitchen that served hot midday meals to children through the monsoon school term — closed without a single missed day.",
-    stats: [
-      { value: "₹18.4L", label: "mobilised" },
-      { value: "612", label: "lives impacted" },
-      { value: "3", label: "NGOs" },
-    ],
-  },
-  {
     id: "food_crisis",
     photo: "/photos/Food_Crisis.png",
     photoAlt: "Volunteers sorting and loading ration kits for distribution",
