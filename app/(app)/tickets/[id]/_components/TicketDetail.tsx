@@ -669,8 +669,6 @@ function ContributeCard({
    * rather than a first pledge. Form behaviour is identical otherwise. */
   hasExistingContribution: boolean;
 }) {
-  const canPledge = match?.contributionFeasibility ?? false;
-
   return (
     <>
       <h2 className="td-card-title">
@@ -704,23 +702,20 @@ function ContributeCard({
         </div>
       )}
 
-      {canPledge ? (
-        <PledgeForm
-          ticketId={ticketId}
-          needs={ticket.needs}
-          rapid={ticket.rapid}
-          match={match}
-          fulfilledByNeed={fulfilledByNeed}
-        />
-      ) : (
-        <div className="td-empty" style={{ padding: 20 }}>
-          {match
-            ? "No matching capacity available for this ticket."
-            : "You don't have a matching resource for this ticket. List a resource in the right category to start receiving matches."}
-        </div>
-      )}
+      {/* Form is rendered for every need while phase = OPEN_FOR_CONTRIBUTIONS;
+          the parent gates on phase, so dropping the per-match gate here lets a
+          contributor pick any of the listed needs from the dropdown. The
+          empty-eligible state inside PledgeForm explains when their inventory
+          doesn't cover the selected need's category. */}
+      <PledgeForm
+        ticketId={ticketId}
+        needs={ticket.needs}
+        rapid={ticket.rapid}
+        match={match}
+        fulfilledByNeed={fulfilledByNeed}
+      />
 
-      {ticket.rapid && canPledge && (
+      {ticket.rapid && (
         <div
           className="badge badge-emergency"
           style={{
