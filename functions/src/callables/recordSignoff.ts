@@ -2,6 +2,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { RecordSignoffInputSchema } from "../lib/schemas";
 import { withIdempotency } from "../lib/idempotency";
+import { resolveActorOrgId } from "../lib/resolveActorOrgId";
 
 /**
  * Contributor records APPROVED or DISPUTED on a PENDING_SIGNOFF ticket.
@@ -25,7 +26,7 @@ export const recordSignoff = onCall({ cors: true }, async (request) => {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
   const { uid, token } = request.auth;
-  const orgId = token.orgId as string | undefined;
+  const orgId = await resolveActorOrgId(uid, token);
   if (!orgId) {
     throw new HttpsError("failed-precondition", "Your org isn't approved yet.");
   }

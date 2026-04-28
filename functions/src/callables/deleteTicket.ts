@@ -3,6 +3,7 @@ import { logger } from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import { DeleteTicketInputSchema } from "../lib/schemas";
 import { withIdempotency } from "../lib/idempotency";
+import { resolveActorOrgId } from "../lib/resolveActorOrgId";
 
 /**
  * Host-only ticket deletion. Allowed only while the ticket has no
@@ -18,7 +19,7 @@ export const deleteTicket = onCall({ cors: true }, async (request) => {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
   const { uid, token } = request.auth;
-  const orgId = (token.orgId as string | undefined) ?? null;
+  const orgId = await resolveActorOrgId(uid, token);
   if (!orgId) {
     throw new HttpsError("failed-precondition", "Your org isn't approved yet.");
   }

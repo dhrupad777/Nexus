@@ -2,6 +2,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import { EditTicketInputSchema } from "../lib/schemas";
+import { resolveActorOrgId } from "../lib/resolveActorOrgId";
 
 /**
  * Host-only ticket edit. Allows changing:
@@ -17,7 +18,7 @@ export const editTicket = onCall(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-  const orgId = request.auth?.token?.orgId as string | undefined;
+  const orgId = await resolveActorOrgId(uid, request.auth?.token);
   if (!orgId) throw new HttpsError("permission-denied", "No org linked to this account.");
 
   const parsed = EditTicketInputSchema.safeParse(request.data);

@@ -2,6 +2,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { RaiseTicketInputSchema } from "../lib/schemas";
 import { withIdempotency } from "../lib/idempotency";
+import { resolveActorOrgId } from "../lib/resolveActorOrgId";
 
 /**
  * Server-side ticket creation. Plan §1a/§1b.
@@ -19,7 +20,7 @@ export const raiseTicket = onCall({ cors: true }, async (request) => {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
   const { uid, token } = request.auth;
-  const orgId = token.orgId as string | undefined;
+  const orgId = await resolveActorOrgId(uid, token);
   if (!orgId) {
     throw new HttpsError("failed-precondition", "Your org isn't approved yet.");
   }

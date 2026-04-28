@@ -5,6 +5,7 @@ import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
+import { resolveActorOrgId } from "../lib/resolveActorOrgId";
 
 /**
  * Owner-only on-demand re-run of the resource embedding pipeline. Used by
@@ -51,8 +52,8 @@ export const retryResourceEmbedding = onCall(
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Sign in required.");
     }
-    const { token } = request.auth;
-    const orgId = (token.orgId as string | undefined) ?? null;
+    const { uid, token } = request.auth;
+    const orgId = await resolveActorOrgId(uid, token);
     if (!orgId) {
       throw new HttpsError(
         "failed-precondition",

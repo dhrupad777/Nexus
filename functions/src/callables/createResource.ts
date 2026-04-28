@@ -2,6 +2,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { ResourceClientWriteSchema } from "../lib/schemas";
 import { withIdempotency } from "../lib/idempotency";
+import { resolveActorOrgId } from "../lib/resolveActorOrgId";
 
 /**
  * Server-side resource listing for an ACTIVE org. Phase 1.4.
@@ -18,7 +19,7 @@ export const createResource = onCall({ cors: true }, async (request) => {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
   const { uid, token } = request.auth;
-  const orgId = (token.orgId as string | undefined) ?? null;
+  const orgId = await resolveActorOrgId(uid, token);
   if (!orgId) {
     throw new HttpsError(
       "failed-precondition",

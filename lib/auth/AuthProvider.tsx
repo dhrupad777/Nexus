@@ -15,7 +15,8 @@ const Ctx = createContext<AuthCtx>({ user: null, loading: true, claims: null });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [claims, setClaims] = useState<AuthCtx["claims"]>(null);
+  const [tokenClaims, setTokenClaims] = useState<AuthCtx["claims"]>(null);
+  const [userDocOrgId, setUserDocOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   // Tracks the last refresh attempt so we don't spam getIdToken(true).
   const refreshedForUidRef = useRef<string | null>(null);
@@ -31,18 +32,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
       if (u) {
         const tokenResult = await u.getIdTokenResult();
-        setClaims({
+        setTokenClaims({
           role: tokenResult.claims.role as string | undefined,
           orgId: tokenResult.claims.orgId as string | undefined,
         });
       } else {
-        setClaims(null);
+        setTokenClaims(null);
+        setUserDocOrgId(null);
         refreshedForUidRef.current = null;
       }
       setLoading(false);
     });
     return unsub;
   }, []);
+
+  // Fallback: subscribe to users/{uid} so callers see the user's orgId from
+  // Firestore even when the cached ID-token claim is missing (users who
+  // joined after approveOrg ran, or before their first token refresh).
+  useEffect(() => {
+    if (!user) {
+      setUserDocOrgId(null);
+      return;
+    }
+    const unsub = onSnapshot(
+      doc(db, "users", user.uid),
+      (snap) => {
+        const data = snap.data() as { orgId?: string | null } | undefined;
+        setUserDocOrgId(typeof data?.orgId === "string" && data.orgId ? data.orgId : null);
+      },
+      () => setUserDocOrgId(null),
+    );
+    return unsub;
+  }, [user]);
 
   // Universal post-approval token refresh. The org doc lives at
   // organizations/{uid} during the self-onboard scheme, so subscribing by
@@ -59,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const status = data?.status as string | undefined;
         if (
           status === "ACTIVE" &&
-          !claims?.orgId &&
+          !tokenClaims?.orgId &&
           refreshedForUidRef.current !== user.uid
         ) {
           refreshedForUidRef.current = user.uid;
@@ -73,7 +94,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     );
     return unsub;
-  }, [user, claims?.orgId]);
+  }, [user, tokenClaims?.orgId]);
+
+  // Effective claims: token claim wins when present (it's the canonical
+  // source after approveOrg), Firestore users/{uid}.orgId is the fallback
+  // for users who joined the org after approval.
+  const claims: AuthCtx["claims"] = user
+    ? {
+        role: tokenClaims?.role,
+        orgId: tokenClaims?.orgId ?? userDocOrgId ?? undefined,
+      }
+    : null;
 
   return <Ctx.Provider value={{ user, loading, claims }}>{children}</Ctx.Provider>;
 }

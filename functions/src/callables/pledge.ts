@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { PledgeInputSchema } from "../lib/schemas";
 import { withIdempotency } from "../lib/idempotency";
 import { reserveInventory } from "../lib/inventory";
+import { resolveActorOrgId } from "../lib/resolveActorOrgId";
 
 /**
  * Pledge to a ticket need. Single PLEDGE_FIRST path; Flow A AGREEMENT_FIRST
@@ -31,7 +32,7 @@ export const pledge = onCall({ cors: true }, async (request) => {
     throw new HttpsError("unauthenticated", "Sign in required.");
   }
   const { uid, token } = request.auth;
-  const orgId = token.orgId as string | undefined;
+  const orgId = await resolveActorOrgId(uid, token);
   if (!orgId) {
     throw new HttpsError("failed-precondition", "Your org isn't approved yet.");
   }
