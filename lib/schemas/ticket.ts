@@ -100,6 +100,19 @@ export const DeleteTicketInputSchema = z.object({
 export type DeleteTicketInput = z.infer<typeof DeleteTicketInputSchema>;
 
 /**
+ * Host-only edit — allowed while ticket is not CLOSED.
+ * All fields optional; caller sends only what changed.
+ */
+export const EditTicketInputSchema = z.object({
+  ticketId: z.string().min(1),
+  title: z.string().min(1).max(200).optional(),
+  urgency: TicketUrgency.optional(),
+  images: z.array(z.string().url()).max(6).optional(),
+  requestId: z.string().min(8),
+});
+export type EditTicketInput = z.infer<typeof EditTicketInputSchema>;
+
+/**
  * Host-only phase advance. Two legal targets per the lifecycle state machine:
  * OPEN_FOR_CONTRIBUTIONS → EXECUTION (no progress floor — host owns the
  * judgment), and EXECUTION → PENDING_SIGNOFF (requires ≥1 photo proof).
