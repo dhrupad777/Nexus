@@ -13,7 +13,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { ref as storageRef, uploadBytes } from "firebase/storage";
+import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
 import { toast } from "sonner";
 import {
   ArrowRight,
@@ -1064,39 +1064,112 @@ function ProofTab({
   proofs: PhotoProofDoc[];
   orgNames: Record<string, string>;
 }) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (proofs.length === 0) return;
+    let cancelled = false;
+    const toFetch = proofs.filter((p) => !urls[p.id]);
+    if (toFetch.length === 0) return;
+    void (async () => {
+      const fetched: Record<string, string> = {};
+      await Promise.all(
+        toFetch.map(async (p) => {
+          try {
+            fetched[p.id] = await getDownloadURL(storageRef(storage, p.storagePath));
+          } catch {
+            // skip — image stays as skeleton
+          }
+        }),
+      );
+      if (!cancelled) setUrls((prev) => ({ ...prev, ...fetched }));
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proofs]);
+
   if (proofs.length === 0) {
     return <div className="td-empty">No proof uploads yet.</div>;
   }
+
   return (
-    <div className="stack" style={{ gap: 10 }}>
-      {proofs.map((p) => {
-        const author = orgNames[p.uploaderOrgId] ?? p.uploaderOrgId.slice(0, 6);
-        return (
-          <div
-            key={p.id}
-            className="td-contrib-row"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              gap: 4,
-            }}
-          >
-            <div className="row" style={{ gap: 8, alignItems: "center" }}>
-              <ImageIcon size={16} style={{ color: "var(--color-primary)" }} />
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{author}</span>
-              <span className="muted-text" style={{ fontSize: 12 }}>
-                · {(p.size / 1024).toFixed(0)} KB · {p.contentType}
-              </span>
+    <div className="stack" style={{ gap: 16 }}>
+      {/* Image grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+          gap: 8,
+        }}
+      >
+        {proofs.map((p) =>
+          urls[p.id] ? (
+            <a
+              key={p.id}
+              href={urls[p.id]}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="View full size"
+              style={{
+                display: "block",
+                borderRadius: 10,
+                overflow: "hidden",
+                lineHeight: 0,
+                border: "1px solid var(--color-border, #e5e7eb)",
+                boxShadow: "0 1px 4px rgba(0,0,0,.06)",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={urls[p.id]}
+                alt={p.caption || "Execution photo proof"}
+                style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }}
+              />
+            </a>
+          ) : (
+            <div
+              key={p.id}
+              style={{
+                height: 160,
+                background: "var(--color-surface-2, #f6f7f9)",
+                borderRadius: 10,
+                border: "1px solid var(--color-border, #e5e7eb)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                color: "var(--color-muted, #6b7280)",
+              }}
+            >
+              Loading…
             </div>
-            {p.caption && <span className="td-contrib-detail">{p.caption}</span>}
-            <span className="td-contrib-time">{formatTime(p.createdAt)}</span>
-            <span className="muted-text" style={{ fontSize: 11, fontFamily: "monospace" }}>
-              {p.storagePath}
-            </span>
-          </div>
-        );
-      })}
+          ),
+        )}
+      </div>
+
+      {/* Metadata rows */}
+      <div className="stack" style={{ gap: 6 }}>
+        {proofs.map((p) => {
+          const author = orgNames[p.uploaderOrgId] ?? p.uploaderOrgId?.slice(0, 6) ?? "—";
+          return (
+            <div
+              key={`meta-${p.id}`}
+              className="td-contrib-row"
+              style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}
+            >
+              <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                <ImageIcon size={14} style={{ color: "var(--color-primary)" }} />
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{author}</span>
+                <span className="muted-text" style={{ fontSize: 12 }}>
+                  · {p.size ? `${(p.size / 1024).toFixed(0)} KB · ` : ""}{p.contentType}
+                </span>
+              </div>
+              {p.caption && <span className="td-contrib-detail">{p.caption}</span>}
+              <span className="td-contrib-time">{formatTime(p.createdAt)}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
