@@ -31,6 +31,7 @@ export function PublicActiveTickets() {
             category: String(x.category ?? "—"),
             location: String(geo.adminRegion ?? "—"),
             deadline: Number(x.deadline ?? 0),
+            image: typeof x.coverImageUrl === "string" ? x.coverImageUrl : undefined,
             urgency: x.urgency === "EMERGENCY" ? "Emergency" : "Normal",
             phase: x.phase ?? "OPEN_FOR_CONTRIBUTIONS",
             completion_percentage: Number(x.progressPct ?? 0),
@@ -62,7 +63,7 @@ export function PublicActiveTickets() {
         <TicketCard
           key={ticket.id}
           ticket={ticket}
-          hrefBase="/explore/tickets"
+          hrefBase="/ticket"
         />
       ))}
     </div>

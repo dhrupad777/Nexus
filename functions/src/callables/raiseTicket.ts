@@ -87,6 +87,10 @@ export const raiseTicket = onCall({ cors: true }, async (request) => {
       needs,
       geo: input.geo,
       deadline: input.deadline,
+      // First image (if any) doubles as the card cover. Stored as an array
+      // even when there's only one — keeps render path uniform.
+      images: input.images && input.images.length > 0 ? input.images : [],
+      coverImageUrl: input.images?.[0] ?? null,
       // Skip RAISED — per plan the ticket goes directly to OPEN_FOR_CONTRIBUTIONS
       // once the raise callable returns; dashboards immediately start matching.
       phase: "OPEN_FOR_CONTRIBUTIONS",

@@ -49,8 +49,16 @@ export const RaiseTicketInputSchema = z.object({
   needs: z.array(NeedInput).min(1).max(10),
   geo: GeoSchema,
   deadline: z.number().int().positive(),
+  // Optional gallery — first entry is the cover used on cards. Up to 6.
+  images: z.array(z.string().url()).max(6).optional(),
   requestId: z.string().min(8),
 });
+
+export const DeleteTicketInputSchema = z.object({
+  ticketId: z.string().min(1),
+  requestId: z.string().min(8),
+});
+export type DeleteTicketInput = z.infer<typeof DeleteTicketInputSchema>;
 export type RaiseTicketInput = z.infer<typeof RaiseTicketInputSchema>;
 
 // ── Resources ─────────────────────────────────────────────────────────────

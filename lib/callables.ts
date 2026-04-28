@@ -4,6 +4,7 @@ import { httpsCallable, type HttpsCallableResult } from "firebase/functions";
 import { functions } from "@/lib/firebase/client";
 import type {
   AdvancePhaseInput,
+  DeleteTicketInput,
   EmbeddingStatus,
   PledgeInput,
   RaiseTicketInput,
@@ -62,3 +63,8 @@ export const callRecordSignoff = make<
   RecordSignoffInput,
   { signoffId: string }
 >("recordSignoff");
+
+export const callDeleteTicket = make<
+  DeleteTicketInput,
+  { ticketId: string; deleted: true }
+>("deleteTicket");

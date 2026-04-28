@@ -27,9 +27,16 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 import { db, storage } from "@/lib/firebase/client";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { callAdvancePhase, callRecordSignoff, callRespondToPledge } from "@/lib/callables";
+import {
+  callAdvancePhase,
+  callDeleteTicket,
+  callRecordSignoff,
+  callRespondToPledge,
+} from "@/lib/callables";
 import { authErrorToMessage } from "@/lib/auth/errors";
 import { PledgeForm } from "./PledgeForm";
 
@@ -590,6 +597,11 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
           orgNames={orgNames}
         />
       )}
+
+      {/* Host-only danger zone — pinned at the bottom corner of the page. */}
+      {isHost && ticket.phase !== "CLOSED" && (
+        <DeleteTicketButton ticketId={ticketId} />
+      )}
     </div>
   );
 }
@@ -911,6 +923,73 @@ function HostControls({
           : "No host actions are available in the current phase."}
       </p>
     </>
+  );
+}
+
+function DeleteTicketButton({ ticketId }: { ticketId: string }) {
+  const router = useRouter();
+  // 0: idle, 1: first confirm, 2: second confirm
+  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [busy, setBusy] = useState(false);
+
+  async function doDelete() {
+    setBusy(true);
+    try {
+      await callDeleteTicket({ ticketId, requestId: randomRequestId() });
+      toast.success("Ticket deleted.");
+      router.replace("/tickets");
+    } catch (err) {
+      toast.error(authErrorToMessage(err));
+      setStep(0);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (step === 0) {
+    return (
+      <div className="td-delete-strip">
+        <button
+          type="button"
+          className="td-delete-btn td-delete-btn--ghost"
+          onClick={() => setStep(1)}
+        >
+          <Trash2 size={14} /> Delete ticket
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="td-delete-confirm">
+      <p className="td-delete-warn">
+        {step === 1
+          ? "Are you sure you want to delete this ticket?"
+          : "This is permanent and cannot be undone. Confirm one more time."}
+      </p>
+      <div className="td-delete-row">
+        <button
+          type="button"
+          className="td-delete-btn td-delete-btn--ghost"
+          onClick={() => setStep(0)}
+          disabled={busy}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="td-delete-btn td-delete-btn--danger"
+          onClick={() => (step === 1 ? setStep(2) : doDelete())}
+          disabled={busy}
+        >
+          {busy
+            ? "Deleting…"
+            : step === 1
+              ? "Yes, delete"
+              : "Confirm permanent delete"}
+        </button>
+      </div>
+    </div>
   );
 }
 

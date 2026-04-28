@@ -33,6 +33,19 @@ service firebase.storage {
         request.resource.contentType.matches('image/(jpeg|png|webp)|video/mp4');
     }
 
+    // Cover/gallery images uploaded while drafting a ticket. Scoped per uid:
+    // the file lives at `tickets/uploads/{uid}/...` so only the uploader can
+    // write. Reads are public — these become the cover image on the card,
+    // which is shown to anyone (including signed-out visitors on the
+    // landing page).
+    match /tickets/uploads/{uid}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp|heic|heif)');
+    }
+
     // Signed agreement PDFs — parties only, server-only write.
     match /agreements/{agreementId}/{fileName} {
       allow read: if request.auth != null;

@@ -38,6 +38,7 @@ export { proposedPledgeTtlSweep } from "./scheduled/proposedPledgeTtlSweep";
 // Callables
 export { approveOrg } from "./callables/approveOrg";
 export { raiseTicket } from "./callables/raiseTicket";
+export { deleteTicket } from "./callables/deleteTicket";
 export { createResource } from "./callables/createResource";
 export { updateResource } from "./callables/updateResource";
 export { retryResourceEmbedding } from "./callables/retryResourceEmbedding";

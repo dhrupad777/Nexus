@@ -87,9 +87,17 @@ export const RaiseTicketInputSchema = z.object({
   needs: z.array(NeedSchema).min(1),
   geo: GeoSchema,
   deadline: z.number().int(),
+  /** Optional gallery — first entry is the cover used on the card thumb. */
+  images: z.array(z.string().url()).max(6).optional(),
   requestId: z.string().min(8),
 });
 export type RaiseTicketInput = z.infer<typeof RaiseTicketInputSchema>;
+
+export const DeleteTicketInputSchema = z.object({
+  ticketId: z.string().min(1),
+  requestId: z.string().min(8),
+});
+export type DeleteTicketInput = z.infer<typeof DeleteTicketInputSchema>;
 
 /**
  * Host-only phase advance. Two legal targets per the lifecycle state machine:

@@ -22,6 +22,8 @@ interface TicketRow {
   contributorCount: number;
   deadline: number;
   lastUpdatedAt: number;
+  coverImageUrl?: string;
+  images: string[];
 }
 
 const TABS = ["All", "Open", "Executing", "Sign-off", "Closed"] as const;
@@ -75,6 +77,12 @@ export default function TicketsClient() {
             contributorCount: Number(x.contributorCount ?? 0),
             deadline: Number(x.deadline ?? 0),
             lastUpdatedAt: Number(x.lastUpdatedAt ?? 0),
+            coverImageUrl: typeof x.coverImageUrl === "string" ? x.coverImageUrl : undefined,
+            images: Array.isArray(x.images)
+              ? (x.images as unknown[]).filter((u): u is string => typeof u === "string")
+              : typeof x.coverImageUrl === "string" && x.coverImageUrl
+                ? [x.coverImageUrl]
+                : [],
           };
         });
         setTickets(out);
@@ -237,7 +245,11 @@ function LiveTicketCard({ ticket }: { ticket: TicketRow }) {
       } as React.CSSProperties}
     >
       <div className="tkt-thumb">
-        <div className="tkt-thumb-placeholder" />
+        {ticket.images.length > 0 ? (
+          <ThumbSlideshow images={ticket.images} />
+        ) : (
+          <div className="tkt-thumb-placeholder" />
+        )}
         <div className="tkt-thumb-overlay">
           <span className="tkt-id-chip">{ticket.id.slice(0, 6)}</span>
           <span className={`tkt-badge ${urgencyClass}`}>{urgencyLabel}</span>
@@ -289,5 +301,50 @@ function LiveTicketCard({ ticket }: { ticket: TicketRow }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function ThumbSlideshow({ images }: { images: string[] }) {
+  const [idx, setIdx] = useState(0);
+
+  // Single image: render once, no timer.
+  useEffect(() => {
+    if (images.length <= 1) return;
+    const t = setInterval(() => {
+      setIdx((i) => (i + 1) % images.length);
+    }, 3500);
+    return () => clearInterval(t);
+  }, [images.length]);
+
+  if (images.length === 1) {
+    return (
+      <img
+        src={images[0]}
+        alt=""
+        className="tkt-thumb-img"
+        style={{ width: "100%", height: "100%" }}
+      />
+    );
+  }
+
+  return (
+    <div className="tkt-slides">
+      {images.map((src, i) => (
+        <img
+          key={src}
+          src={src}
+          alt=""
+          className={`tkt-slide${i === idx ? " tkt-slide--active" : ""}`}
+        />
+      ))}
+      <div className="tkt-slides-dots">
+        {images.map((_, i) => (
+          <span
+            key={i}
+            className={`tkt-slides-dot${i === idx ? " tkt-slides-dot--active" : ""}`}
+          />
+        ))}
+      </div>
+    </div>
   );
 }

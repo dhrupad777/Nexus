@@ -3807,6 +3807,398 @@ a:hover {
 }
 .pd-proof-tile:hover::after { opacity: 1; }
 
+/* ── Public ticket: cover image inside hero ── */
+.pd-hero-cover {
+  position: relative;
+  width: calc(100% + 64px);
+  margin: -32px -32px 24px;
+  height: 280px;
+  overflow: hidden;
+  border-radius: 18px 18px 0 0;
+  z-index: 0;
+}
+.pd-hero-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pd-hero-cover-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 40%,
+    rgba(0, 0, 0, 0.18) 70%,
+    rgba(255, 255, 255, 0.92) 100%
+  );
+  pointer-events: none;
+}
+@media (max-width: 720px) {
+  .pd-hero-cover {
+    width: calc(100% + 40px);
+    margin: -24px -20px 18px;
+    height: 200px;
+  }
+}
+
+/* ── Public ticket: Contribute CTA row in hero ── */
+.pd-cta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 20px;
+}
+.pd-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.005em;
+  text-decoration: none;
+  border: none;
+  box-shadow: 0 6px 20px -8px rgba(37, 99, 235, 0.55);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.pd-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px -8px rgba(37, 99, 235, 0.65);
+  background: #1d4ed8;
+}
+.pd-cta-note {
+  font-size: 13px;
+  color: var(--color-muted, #6b7280);
+}
+
+/* ── Public ticket: phase timeline ── */
+.pd-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.pd-timeline::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    rgba(37, 99, 235, 0.35) 0%,
+    rgba(37, 99, 235, 0.1) 60%,
+    rgba(0, 0, 0, 0.06) 100%
+  );
+  border-radius: 2px;
+}
+.pd-timeline-item {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  padding-left: 0;
+}
+.pd-timeline-dot {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.35);
+  transition: all 0.2s ease;
+}
+.pd-timeline-item--done .pd-timeline-dot {
+  background: var(--color-primary, #2563eb);
+  border-color: var(--color-primary, #2563eb);
+  color: #fff;
+}
+.pd-timeline-item--current .pd-timeline-dot {
+  background: #fff;
+  border-color: var(--color-primary, #2563eb);
+  color: var(--color-primary, #2563eb);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+.pd-timeline-item--current .pd-timeline-dot svg {
+  animation: pd-timeline-spin 2s linear infinite;
+}
+@keyframes pd-timeline-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.pd-timeline-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  flex: 1;
+  min-width: 0;
+}
+.pd-timeline-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pd-timeline-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+  letter-spacing: -0.005em;
+}
+.pd-timeline-item--todo .pd-timeline-name {
+  color: var(--color-muted, #6b7280);
+  font-weight: 500;
+}
+.pd-timeline-when {
+  font-size: 12px;
+  color: var(--color-muted, #6b7280);
+  font-variant-numeric: tabular-nums;
+}
+.pd-timeline-copy {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-muted, #6b7280);
+  margin: 0;
+}
+.pd-timeline-item--todo .pd-timeline-copy {
+  opacity: 0.7;
+}
+
+/* ── Public ticket: bottom CTA strip ── */
+.pd-cta-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 24px 28px;
+  border-radius: 16px;
+  background: linear-gradient(
+    135deg,
+    rgba(37, 99, 235, 0.08) 0%,
+    rgba(124, 58, 237, 0.06) 100%
+  );
+  border: 1px solid rgba(37, 99, 235, 0.18);
+}
+.pd-cta-bottom-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+.pd-cta-bottom-sub {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-muted, #6b7280);
+  margin: 0;
+  max-width: 480px;
+}
+
+/* ── New ticket: image upload grid ── */
+.ticket-img-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+.ticket-img-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--color-surface-2, #f3f4f6);
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+}
+.ticket-img-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ticket-img-cover {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  padding: 3px 7px;
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
+}
+.ticket-img-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.ticket-img-remove:hover {
+  background: rgba(220, 38, 38, 0.9);
+}
+.ticket-img-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  border: 1.5px dashed var(--color-border, rgba(0, 0, 0, 0.15));
+  background: var(--color-surface-2, #f9fafb);
+  color: var(--color-muted, #6b7280);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ticket-img-add:hover {
+  border-color: var(--color-primary, #2563eb);
+  color: var(--color-primary, #2563eb);
+  background: rgba(37, 99, 235, 0.04);
+}
+.ticket-img-add--busy {
+  cursor: wait;
+  opacity: 0.7;
+}
+.ticket-img-add .spin {
+  animation: ticket-spin 1s linear infinite;
+}
+@keyframes ticket-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── Ticket card: slideshow inside .tkt-thumb ── */
+.tkt-slides {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.tkt-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+.tkt-slide--active {
+  opacity: 1;
+}
+.tkt-slides-dots {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 5px;
+  z-index: 2;
+}
+.tkt-slides-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  transition: background 0.25s ease, transform 0.25s ease;
+}
+.tkt-slides-dot--active {
+  background: #fff;
+  transform: scale(1.3);
+}
+
+/* ── Ticket detail: host-only danger zone, bottom-right corner ── */
+.td-delete-strip {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--color-border, rgba(0, 0, 0, 0.1));
+}
+.td-delete-confirm {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  background: rgba(254, 226, 226, 0.4);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.td-delete-warn {
+  font-size: 13px;
+  color: #991b1b;
+  margin: 0;
+  line-height: 1.5;
+}
+.td-delete-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.td-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.td-delete-btn--ghost {
+  background: transparent;
+  color: var(--color-muted, #6b7280);
+  border-color: var(--color-border, rgba(0, 0, 0, 0.12));
+}
+.td-delete-btn--ghost:hover {
+  color: var(--color-text, #111827);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+.td-delete-btn--danger {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+  font-weight: 600;
+}
+.td-delete-btn--danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+.td-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* ── ORG: stat trio ── */
 .po-stat-grid {
   display: grid;

@@ -2,15 +2,18 @@ import Link from "next/link";
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ArrowLeft, MapPin } from "lucide-react";
+import { ArrowLeft, MapPin, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { adminDb, adminStorage } from "@/lib/firebase/admin";
 import { HomeTopbar } from "../../_components/HomeTopbar";
 
 export const revalidate = 60;
 
-// Every Firestore read goes through a normalizer — never a bare `as` cast.
-// Legacy docs may be missing fields the schema later added; the normalizer
-// applies safe defaults once, so render code can trust the shape.
+type Phase =
+  | "RAISED"
+  | "OPEN_FOR_CONTRIBUTIONS"
+  | "EXECUTION"
+  | "PENDING_SIGNOFF"
+  | "CLOSED";
 
 interface TicketDoc {
   hostOrgId: string;
@@ -19,6 +22,7 @@ interface TicketDoc {
   description: string;
   category: string;
   rapid: boolean;
+  urgency: "NORMAL" | "EMERGENCY";
   needs: Array<{
     resourceCategory: string;
     subtype?: string;
@@ -28,10 +32,13 @@ interface TicketDoc {
     progressPct: number;
   }>;
   geo: { adminRegion: string };
-  phase: string;
+  phase: Phase;
   progressPct: number;
   participantOrgIds: string[];
+  createdAt: number;
+  phaseChangedAt: number;
   closedAt: number | null;
+  coverImageUrl?: string;
 }
 
 interface BadgeDoc {
@@ -41,6 +48,29 @@ interface BadgeDoc {
   contributedValuationINR: number;
   proportionalSharePct: number;
   scorePct: number;
+}
+
+interface ContributionDoc {
+  contributorOrgId: string;
+  status: string;
+  offered: {
+    kind: string;
+    quantity: number;
+    unit: string;
+    valuationINR: number;
+    pctOfNeed: number;
+  };
+  createdAt: number;
+}
+
+function asPhase(v: unknown): Phase {
+  return v === "RAISED" ||
+    v === "OPEN_FOR_CONTRIBUTIONS" ||
+    v === "EXECUTION" ||
+    v === "PENDING_SIGNOFF" ||
+    v === "CLOSED"
+    ? v
+    : "OPEN_FOR_CONTRIBUTIONS";
 }
 
 function parseTicket(raw: unknown): TicketDoc {
@@ -71,16 +101,23 @@ function parseTicket(raw: unknown): TicketDoc {
     description: typeof d.description === "string" ? d.description : "",
     category: typeof d.category === "string" ? d.category : "",
     rapid: Boolean(d.rapid),
+    urgency: d.urgency === "EMERGENCY" ? "EMERGENCY" : "NORMAL",
     needs,
     geo: {
       adminRegion: typeof geoRaw.adminRegion === "string" ? geoRaw.adminRegion : "—",
     },
-    phase: typeof d.phase === "string" ? d.phase : "",
+    phase: asPhase(d.phase),
     progressPct: Number(d.progressPct ?? 0),
     participantOrgIds: Array.isArray(d.participantOrgIds)
       ? d.participantOrgIds.filter((x): x is string => typeof x === "string")
       : [],
+    createdAt: Number(d.createdAt ?? 0),
+    phaseChangedAt: Number(d.phaseChangedAt ?? 0),
     closedAt: typeof d.closedAt === "number" ? d.closedAt : null,
+    coverImageUrl:
+      typeof d.coverImageUrl === "string" && d.coverImageUrl
+        ? d.coverImageUrl
+        : undefined,
   };
 }
 
@@ -96,6 +133,23 @@ function parseBadge(raw: unknown): BadgeDoc {
   };
 }
 
+function parseContribution(raw: unknown): ContributionDoc {
+  const d = (raw ?? {}) as Record<string, unknown>;
+  const offered = (d.offered ?? {}) as Record<string, unknown>;
+  return {
+    contributorOrgId: String(d.contributorOrgId ?? ""),
+    status: String(d.status ?? ""),
+    offered: {
+      kind: String(offered.kind ?? ""),
+      quantity: Number(offered.quantity ?? 0),
+      unit: String(offered.unit ?? ""),
+      valuationINR: Number(offered.valuationINR ?? 0),
+      pctOfNeed: Number(offered.pctOfNeed ?? 0),
+    },
+    createdAt: Number(d.createdAt ?? 0),
+  };
+}
+
 interface ProofWithUrl {
   storagePath: string;
   caption: string;
@@ -108,9 +162,7 @@ const loadTicket = cache(async (id: string): Promise<TicketDoc | null> => {
   try {
     const snap = await adminDb.collection("tickets").doc(id).get();
     if (!snap.exists) return null;
-    const data = parseTicket(snap.data());
-    if (data.phase !== "CLOSED") return null;
-    return data;
+    return parseTicket(snap.data());
   } catch {
     return null;
   }
@@ -119,6 +171,19 @@ const loadTicket = cache(async (id: string): Promise<TicketDoc | null> => {
 async function loadBadges(ticketId: string): Promise<BadgeDoc[]> {
   const snap = await adminDb.collection("badges").where("ticketId", "==", ticketId).get();
   return snap.docs.map((d) => parseBadge(d.data()));
+}
+
+async function loadContributions(ticketId: string): Promise<ContributionDoc[]> {
+  // Visible-status only — hide PROPOSED/REJECTED from the public view.
+  const snap = await adminDb
+    .collection("tickets")
+    .doc(ticketId)
+    .collection("contributions")
+    .where("status", "in", ["AGREEMENT_PENDING", "COMMITTED", "EXECUTED", "SIGNED_OFF"])
+    .get();
+  return snap.docs
+    .map((d) => parseContribution(d.data()))
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 async function loadOrgNames(orgIds: string[]): Promise<Record<string, string>> {
@@ -174,9 +239,43 @@ export async function generateMetadata({
       title: ticket.title,
       description,
       type: "article",
+      images: ticket.coverImageUrl ? [{ url: ticket.coverImageUrl }] : undefined,
     },
   };
 }
+
+const PHASE_ORDER: Phase[] = [
+  "RAISED",
+  "OPEN_FOR_CONTRIBUTIONS",
+  "EXECUTION",
+  "PENDING_SIGNOFF",
+  "CLOSED",
+];
+
+const PHASE_LABEL: Record<Phase, string> = {
+  RAISED: "Ticket raised",
+  OPEN_FOR_CONTRIBUTIONS: "Open for contributions",
+  EXECUTION: "Execution underway",
+  PENDING_SIGNOFF: "Awaiting contributor sign-off",
+  CLOSED: "Closed",
+};
+
+const PHASE_COPY: Record<Phase, string> = {
+  RAISED: "The host raised this ticket and described the need.",
+  OPEN_FOR_CONTRIBUTIONS:
+    "Verified orgs are pledging resources. Contribute or watch the progress.",
+  EXECUTION: "Pledged resources are being delivered on the ground.",
+  PENDING_SIGNOFF:
+    "Delivery wrapped up. Contributors are signing off on what they delivered.",
+  CLOSED: "Ticket fulfilled. Impact recorded on the timeline.",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  AGREEMENT_PENDING: "Agreement pending",
+  COMMITTED: "Committed",
+  EXECUTED: "Delivered",
+  SIGNED_OFF: "Signed off",
+};
 
 export default async function PublicTicketPage({
   params,
@@ -187,17 +286,26 @@ export default async function PublicTicketPage({
   const ticket = await loadTicket(id);
   if (!ticket) notFound();
 
-  const [badges, proofs] = await Promise.all([loadBadges(id), loadProofs(id)]);
-  const orgIds = Array.from(new Set(badges.map((b) => b.orgId).filter(Boolean)));
+  const isClosed = ticket.phase === "CLOSED";
+
+  const [badges, contributions, proofs] = await Promise.all([
+    isClosed ? loadBadges(id) : Promise.resolve([]),
+    isClosed ? Promise.resolve([]) : loadContributions(id),
+    isClosed ? loadProofs(id) : Promise.resolve([]),
+  ]);
+
+  const orgIds = Array.from(
+    new Set([
+      ...badges.map((b) => b.orgId),
+      ...contributions.map((c) => c.contributorOrgId),
+    ].filter(Boolean)),
+  );
   const orgNames = await loadOrgNames(orgIds);
 
   const totalDelivered = badges.reduce(
     (a, b) => a + Number(b.contributedValuationINR ?? 0),
     0,
   );
-  const closedDate = ticket.closedAt
-    ? new Date(ticket.closedAt).toLocaleDateString()
-    : "—";
 
   const sortedBadges = badges.slice().sort((a, b) => {
     if (a.role === "HOST") return -1;
@@ -206,6 +314,14 @@ export default async function PublicTicketPage({
   });
 
   const fmt = (v: number) => new Intl.NumberFormat("en-IN").format(Math.round(v));
+  const fmtDate = (ms: number) =>
+    ms > 0 ? new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+  const currentPhaseIdx = PHASE_ORDER.indexOf(ticket.phase);
+
+  // Contribute CTA → /login. After auth, drop them on the in-app ticket
+  // detail (/tickets/{id}) where they can actually pledge.
+  const contributeHref = `/login?next=${encodeURIComponent(`/tickets/${id}`)}`;
 
   return (
     <div className="pd-shell">
@@ -217,13 +333,26 @@ export default async function PublicTicketPage({
 
         {/* ── Hero ── */}
         <header className="pd-hero">
+          {ticket.coverImageUrl && (
+            <div className="pd-hero-cover">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={ticket.coverImageUrl} alt="" />
+              <div className="pd-hero-cover-fade" />
+            </div>
+          )}
           <div className="pd-hero-meta">
-            {ticket.rapid && (
+            {ticket.urgency === "EMERGENCY" && (
               <span className="pd-chip pd-chip--rapid">Emergency</span>
             )}
-            <span className="pd-chip pd-chip--closed">
-              <span className="pd-chip-dot" /> Closed · {closedDate}
-            </span>
+            {isClosed ? (
+              <span className="pd-chip pd-chip--closed">
+                <span className="pd-chip-dot" /> Closed · {fmtDate(ticket.closedAt ?? 0)}
+              </span>
+            ) : (
+              <span className="pd-chip">
+                <span className="pd-chip-dot" /> {PHASE_LABEL[ticket.phase]}
+              </span>
+            )}
             <span className="pd-chip">
               Hosted by {ticket.host.name} · {ticket.host.type}
             </span>
@@ -232,36 +361,95 @@ export default async function PublicTicketPage({
             </span>
           </div>
           <h1 className="pd-title">{ticket.title}</h1>
-          {ticket.description && (
-            <p className="pd-desc">{ticket.description}</p>
+          {ticket.description && <p className="pd-desc">{ticket.description}</p>}
+
+          {!isClosed && (
+            <div className="pd-cta-row">
+              <Link href={contributeHref} className="pd-cta">
+                Contribute to this ticket
+              </Link>
+              <span className="pd-cta-note">
+                Sign in or create an org account to pledge resources.
+              </span>
+            </div>
           )}
         </header>
 
-        {/* ── Impact card ── */}
-        <div className="pd-impact">
-          <div className="pd-impact-l">
-            <span className="pd-impact-label">Total impact delivered</span>
-            <span className="pd-impact-value">₹{fmt(totalDelivered)}</span>
-          </div>
-          <div className="pd-impact-meta">
-            <div>
-              {badges.length} {badges.length === 1 ? "participant" : "participants"}
+        {/* ── Impact card (closed only) ── */}
+        {isClosed && (
+          <div className="pd-impact">
+            <div className="pd-impact-l">
+              <span className="pd-impact-label">Total impact delivered</span>
+              <span className="pd-impact-value">₹{fmt(totalDelivered)}</span>
             </div>
-            <div>
-              {ticket.needs.length}{" "}
-              {ticket.needs.length === 1 ? "need" : "needs"} fulfilled
+            <div className="pd-impact-meta">
+              <div>
+                {sortedBadges.length} {sortedBadges.length === 1 ? "participant" : "participants"}
+              </div>
+              <div>
+                {ticket.needs.length} {ticket.needs.length === 1 ? "need" : "needs"} fulfilled
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* ── Progress timeline ── */}
+        <section className="pd-section">
+          <div className="pd-section-head">
+            <h2 className="pd-section-title">Progress so far</h2>
+            <p className="pd-section-sub">
+              Where this ticket sits in the Nexus workflow.
+            </p>
+          </div>
+          <ol className="pd-timeline">
+            {PHASE_ORDER.map((p, i) => {
+              const state =
+                i < currentPhaseIdx
+                  ? "done"
+                  : i === currentPhaseIdx
+                    ? "current"
+                    : "todo";
+              const Icon =
+                state === "done"
+                  ? CheckCircle2
+                  : state === "current"
+                    ? Loader2
+                    : Circle;
+              return (
+                <li key={p} className={`pd-timeline-item pd-timeline-item--${state}`}>
+                  <div className="pd-timeline-dot">
+                    <Icon size={16} />
+                  </div>
+                  <div className="pd-timeline-body">
+                    <div className="pd-timeline-head">
+                      <span className="pd-timeline-name">{PHASE_LABEL[p]}</span>
+                      {p === "RAISED" && ticket.createdAt > 0 && (
+                        <span className="pd-timeline-when">{fmtDate(ticket.createdAt)}</span>
+                      )}
+                      {p === ticket.phase && p !== "RAISED" && ticket.phaseChangedAt > 0 && (
+                        <span className="pd-timeline-when">{fmtDate(ticket.phaseChangedAt)}</span>
+                      )}
+                      {p === "CLOSED" && ticket.closedAt && (
+                        <span className="pd-timeline-when">{fmtDate(ticket.closedAt)}</span>
+                      )}
+                    </div>
+                    <p className="pd-timeline-copy">{PHASE_COPY[p]}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
 
         {/* ── Needs ── */}
         {ticket.needs.length > 0 && (
           <section className="pd-section">
             <div className="pd-section-head">
-              <h2 className="pd-section-title">What was delivered</h2>
+              <h2 className="pd-section-title">
+                {isClosed ? "What was delivered" : "What's needed"}
+              </h2>
               <p className="pd-section-sub">
-                Each line is a discrete need. Progress reflects committed and
-                signed-off contributions.
+                Each line is a discrete need. Progress reflects committed and signed-off contributions.
               </p>
             </div>
             <div className="pd-needs-grid">
@@ -292,8 +480,60 @@ export default async function PublicTicketPage({
           </section>
         )}
 
-        {/* ── Contributors ── */}
-        {sortedBadges.length > 0 && (
+        {/* ── Active contributions (active phases) ── */}
+        {!isClosed && contributions.length > 0 && (
+          <section className="pd-section">
+            <div className="pd-section-head">
+              <h2 className="pd-section-title">Contributions so far</h2>
+              <p className="pd-section-sub">
+                Verified orgs that have pledged toward this ticket.
+              </p>
+            </div>
+            <div className="pd-contrib-grid">
+              {contributions.map((c, i) => (
+                <div key={i} className="pd-contrib-card">
+                  <div className="pd-contrib-head">
+                    <span className="pd-contrib-name">
+                      {orgNames[c.contributorOrgId] ?? c.contributorOrgId.slice(0, 8)}
+                    </span>
+                    <span className="pd-contrib-role">
+                      {STATUS_LABEL[c.status] ?? c.status}
+                    </span>
+                  </div>
+                  <div className="pd-contrib-stats">
+                    <div>
+                      <span className="pd-contrib-stat-key">Offered</span>
+                      <span className="pd-contrib-stat-val">
+                        {fmt(c.offered.quantity)} {c.offered.unit}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="pd-contrib-stat-key">Value</span>
+                      <span className="pd-contrib-stat-val">
+                        ₹{fmt(c.offered.valuationINR)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="pd-contrib-stat-key">Of need</span>
+                      <span className="pd-contrib-stat-val">
+                        {Math.round(c.offered.pctOfNeed)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="pd-contrib-bar">
+                    <div
+                      className="pd-contrib-bar-fill"
+                      style={{ width: `${Math.min(100, c.offered.pctOfNeed)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── Contributors (closed: from badges) ── */}
+        {isClosed && sortedBadges.length > 0 && (
           <section className="pd-section">
             <div className="pd-section-head">
               <h2 className="pd-section-title">Contributors</h2>
@@ -347,8 +587,8 @@ export default async function PublicTicketPage({
           </section>
         )}
 
-        {/* ── Proofs ── */}
-        {proofs.length > 0 && (
+        {/* ── Proofs (closed only) ── */}
+        {isClosed && proofs.length > 0 && (
           <section className="pd-section">
             <div className="pd-section-head">
               <h2 className="pd-section-title">Proof of delivery</h2>
@@ -366,14 +606,25 @@ export default async function PublicTicketPage({
                   className="pd-proof-tile"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.url}
-                    alt={p.caption || "Proof of delivery"}
-                    loading="lazy"
-                  />
+                  <img src={p.url} alt={p.caption || "Proof of delivery"} loading="lazy" />
                 </a>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* ── Bottom CTA (active only) ── */}
+        {!isClosed && (
+          <section className="pd-cta-bottom">
+            <div>
+              <h3 className="pd-cta-bottom-title">Want to help?</h3>
+              <p className="pd-cta-bottom-sub">
+                Sign in with your organisation account to pledge resources or funds against this ticket.
+              </p>
+            </div>
+            <Link href={contributeHref} className="pd-cta">
+              Contribute
+            </Link>
           </section>
         )}
       </main>
