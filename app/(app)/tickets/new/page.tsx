@@ -26,6 +26,24 @@ const CATEGORIES = [
   "FOOD_KIT",
 ] as const;
 
+// Ticket-level domain. Matches the categories used in seed data + the
+// standard NGO/relief verticals visible on the public homepage filters.
+const TICKET_CATEGORIES = [
+  "EDUCATION",
+  "HEALTH",
+  "DISASTER",
+  "FOOD",
+  "WATER_SANITATION",
+  "SHELTER",
+  "LIVELIHOOD",
+  "WOMENS_EMPOWERMENT",
+  "CHILD_WELFARE",
+  "ENVIRONMENT",
+  "TECHNOLOGY",
+  "COMMUNITY",
+  "OTHER",
+] as const;
+
 function randomRequestId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -157,8 +175,11 @@ export default function NewTicketPage() {
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             <div className="form-row" style={{ flex: 1, minWidth: 200 }}>
               <label htmlFor="category" className="label">Category</label>
-              <input id="category" className="input" placeholder="e.g. EDUCATION, HEALTH, DISASTER"
-                     {...form.register("category")} />
+              <select id="category" className="select" {...form.register("category")}>
+                {TICKET_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             <div className="form-row" style={{ flex: 1, minWidth: 200 }}>
               <label htmlFor="urgency" className="label">Urgency</label>
