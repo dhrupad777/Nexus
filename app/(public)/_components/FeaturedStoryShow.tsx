@@ -1,9 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  collection,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
 
 type Story = {
   id: string;
@@ -17,7 +26,10 @@ type Story = {
   stats: { value: string; label: string }[];
 };
 
-const STORIES: Story[] = [
+// Showcase fallback used until at least one real CLOSED ticket exists with a
+// cover image. Once the query below returns ≥1 derived story, the fallback
+// disappears entirely. New tickets that close show up here automatically.
+const FALLBACK_STORIES: Story[] = [
   {
     id: "child_hunger",
     photo: "/photos/child_hunger.png",
@@ -71,30 +83,151 @@ const STORIES: Story[] = [
 const EASE = [0.22, 1, 0.36, 1] as const;
 const INTERVAL_MS = 7000;
 
+function formatINR(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "₹0";
+  if (n >= 10_000_000) return `₹${(n / 10_000_000).toFixed(1)}Cr`;
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(1)}L`;
+  if (n >= 1_000) return `₹${(n / 1_000).toFixed(1)}K`;
+  return `₹${Math.round(n).toLocaleString("en-IN")}`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms <= 0) return "—";
+  const days = Math.max(1, Math.round(ms / 86_400_000));
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"}`;
+  const months = Math.round(days / 30);
+  return `${months} month${months === 1 ? "" : "s"}`;
+}
+
+function ticketToStory(id: string, t: Record<string, unknown>): Story | null {
+  // Story cards are visual — skip closed tickets that never got a cover.
+  const cover =
+    typeof t.coverImageUrl === "string" && t.coverImageUrl
+      ? t.coverImageUrl
+      : Array.isArray(t.images) &&
+          typeof (t.images as unknown[])[0] === "string" &&
+          (t.images as string[])[0]
+        ? (t.images as string[])[0]
+        : null;
+  if (!cover) return null;
+
+  const needs = Array.isArray(t.needs)
+    ? (t.needs as Array<Record<string, unknown>>)
+    : [];
+  const totalValue = needs.reduce(
+    (s, n) => s + Number(n.valuationINR ?? 0),
+    0,
+  );
+  const totalQty = needs.reduce((s, n) => s + Number(n.quantity ?? 0), 0);
+  const firstUnit =
+    typeof needs[0]?.unit === "string" && (needs[0]!.unit as string)
+      ? (needs[0]!.unit as string)
+      : "units";
+
+  const orgCount = Array.isArray(t.participantOrgIds)
+    ? (t.participantOrgIds as unknown[]).length
+    : 0;
+
+  const createdAt = Number(t.createdAt ?? 0);
+  const closedAt = Number(t.closedAt ?? 0);
+  const duration = formatDuration(closedAt - createdAt);
+
+  const geo = (t.geo as { adminRegion?: string } | undefined) ?? {};
+  const location =
+    typeof geo.adminRegion === "string" && geo.adminRegion.trim()
+      ? geo.adminRegion.trim()
+      : "—";
+
+  const stats: { value: string; label: string }[] = [
+    { value: formatINR(totalValue), label: "mobilised" },
+  ];
+  if (totalQty > 0) {
+    stats.push({
+      value: totalQty.toLocaleString("en-IN"),
+      label: firstUnit.toLowerCase(),
+    });
+  }
+  stats.push({
+    value: String(orgCount),
+    label: orgCount === 1 ? "org" : "orgs",
+  });
+
+  return {
+    id,
+    photo: cover,
+    photoAlt: typeof t.title === "string" ? t.title : "Closed ticket",
+    ticket: `T-${id.slice(0, 6).toUpperCase()}`,
+    title: typeof t.title === "string" && t.title ? t.title : "Untitled",
+    location,
+    duration,
+    outcome: typeof t.description === "string" ? t.description : "",
+    stats,
+  };
+}
+
 export function FeaturedStoryShow() {
   const reduce = useReducedMotion();
+  const [liveStories, setLiveStories] = useState<Story[] | null>(null);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Live subscription to closed tickets — most-recently-closed first.
   useEffect(() => {
-    if (reduce || paused) return;
+    const q = query(
+      collection(db, "tickets"),
+      where("phase", "==", "CLOSED"),
+      orderBy("closedAt", "desc"),
+      limit(8),
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const out: Story[] = [];
+        for (const d of snap.docs) {
+          const s = ticketToStory(d.id, d.data() as Record<string, unknown>);
+          if (s) out.push(s);
+        }
+        setLiveStories(out);
+      },
+      // On any read error, leave liveStories as-is — the fallback shows by
+      // default, so the page never goes blank.
+      () => setLiveStories([]),
+    );
+    return unsub;
+  }, []);
+
+  const stories = useMemo<Story[]>(
+    () =>
+      liveStories && liveStories.length > 0 ? liveStories : FALLBACK_STORIES,
+    [liveStories],
+  );
+
+  // Reset index if the active story disappeared (ticket count shrank).
+  useEffect(() => {
+    if (index >= stories.length) setIndex(0);
+  }, [stories.length, index]);
+
+  useEffect(() => {
+    if (reduce || paused || stories.length <= 1) return;
     const id = setInterval(() => {
-      setIndex((i) => (i + 1) % STORIES.length);
+      setIndex((i) => (i + 1) % stories.length);
     }, INTERVAL_MS);
     return () => clearInterval(id);
-  }, [reduce, paused]);
+  }, [reduce, paused, stories.length]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "ArrowRight") setIndex((i) => (i + 1) % STORIES.length);
-      if (e.key === "ArrowLeft") setIndex((i) => (i - 1 + STORIES.length) % STORIES.length);
+      if (e.key === "ArrowRight")
+        setIndex((i) => (i + 1) % stories.length);
+      if (e.key === "ArrowLeft")
+        setIndex((i) => (i - 1 + stories.length) % stories.length);
     }
     el.addEventListener("keydown", onKey);
     return () => el.removeEventListener("keydown", onKey);
-  }, []);
+  }, [stories.length]);
 
   return (
     <section
@@ -109,7 +242,7 @@ export function FeaturedStoryShow() {
       onBlur={() => setPaused(false)}
     >
       <div className="story-stack">
-        {STORIES.map((story, i) => {
+        {stories.map((story, i) => {
           const active = i === index;
           return (
             <motion.article
@@ -123,7 +256,7 @@ export function FeaturedStoryShow() {
                 zIndex: active ? 2 : 1,
               }}
               aria-hidden={!active}
-              aria-label={`Story ${i + 1} of ${STORIES.length}: ${story.title}`}
+              aria-label={`Story ${i + 1} of ${stories.length}: ${story.title}`}
             >
               <div className="story-photo">
                 <Image
@@ -132,6 +265,7 @@ export function FeaturedStoryShow() {
                   fill
                   sizes="(min-width: 1100px) 600px, (min-width: 760px) 80vw, 100vw"
                   priority={i === 0}
+                  unoptimized={story.photo.startsWith("https://")}
                 />
               </div>
               <div className="story-content">
@@ -167,12 +301,14 @@ export function FeaturedStoryShow() {
           type="button"
           className="story-nav-btn"
           aria-label="Previous story"
-          onClick={() => setIndex((i) => (i - 1 + STORIES.length) % STORIES.length)}
+          onClick={() =>
+            setIndex((i) => (i - 1 + stories.length) % stories.length)
+          }
         >
           <ChevronLeft size={18} strokeWidth={2.5} />
         </button>
         <nav className="story-dots" aria-label="Story navigation">
-          {STORIES.map((s, i) => (
+          {stories.map((s, i) => (
             <button
               key={s.id}
               type="button"
@@ -187,7 +323,7 @@ export function FeaturedStoryShow() {
           type="button"
           className="story-nav-btn"
           aria-label="Next story"
-          onClick={() => setIndex((i) => (i + 1) % STORIES.length)}
+          onClick={() => setIndex((i) => (i + 1) % stories.length)}
         >
           <ChevronRight size={18} strokeWidth={2.5} />
         </button>

@@ -12,6 +12,14 @@
       "collectionGroup": "tickets",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "phase", "order": "ASCENDING" },
+        { "fieldPath": "closedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tickets",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "rapid", "order": "ASCENDING" },
         { "fieldPath": "phase", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }

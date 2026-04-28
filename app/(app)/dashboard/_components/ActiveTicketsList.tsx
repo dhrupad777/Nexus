@@ -50,20 +50,25 @@ export function ActiveTicketsList({ orgId }: { orgId: string }) {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const out: ActiveRow[] = snap.docs.map((d) => {
-          const x = d.data();
-          return {
-            id: d.id,
-            title: String(x.title ?? "(untitled)"),
-            hostOrgId: String(x.hostOrgId ?? ""),
-            host: { name: String(x.host?.name ?? "—"), type: x.host?.type ?? "ORG" },
-            phase: x.phase as TicketPhase,
-            rapid: Boolean(x.rapid),
-            progressPct: Number(x.progressPct ?? 0),
-            contributorCount: Number(x.contributorCount ?? 0),
-            lastUpdatedAt: Number(x.lastUpdatedAt ?? x.createdAt ?? 0),
-          };
-        });
+        const out: ActiveRow[] = snap.docs
+          .map((d) => {
+            const x = d.data();
+            return {
+              id: d.id,
+              title: String(x.title ?? "(untitled)"),
+              hostOrgId: String(x.hostOrgId ?? ""),
+              host: { name: String(x.host?.name ?? "—"), type: x.host?.type ?? "ORG" },
+              phase: x.phase as TicketPhase,
+              rapid: Boolean(x.rapid),
+              progressPct: Number(x.progressPct ?? 0),
+              contributorCount: Number(x.contributorCount ?? 0),
+              lastUpdatedAt: Number(x.lastUpdatedAt ?? x.createdAt ?? 0),
+            };
+          })
+          // Closed tickets live on /profile and the homepage's "Recently
+          // closed" — drop them from the dashboard's "Active" feed so it's
+          // genuinely a list of things you can still act on.
+          .filter((r) => r.phase !== "CLOSED");
         setRows(out);
       },
       () => setRows([]),
