@@ -109,6 +109,18 @@ export const RespondToPledgeInputSchema = z.object({
 });
 export type RespondToPledgeInput = z.infer<typeof RespondToPledgeInputSchema>;
 
+// ── Edit ticket ───────────────────────────────────────────────────────────
+
+/** Mirror of lib/schemas/ticket.ts EditTicketInputSchema. */
+export const EditTicketInputSchema = z.object({
+  ticketId: z.string().min(1),
+  title: z.string().min(1).max(200).optional(),
+  urgency: TicketUrgency.optional(),
+  images: z.array(z.string().url()).max(6).optional(),
+  requestId: z.string().min(8),
+});
+export type EditTicketInput = z.infer<typeof EditTicketInputSchema>;
+
 // ── Phase transitions ─────────────────────────────────────────────────────
 
 /** Mirror of lib/schemas/ticket.ts AdvancePhaseInputSchema. */

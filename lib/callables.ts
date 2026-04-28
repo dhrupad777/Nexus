@@ -5,6 +5,7 @@ import { functions } from "@/lib/firebase/client";
 import type {
   AdvancePhaseInput,
   DeleteTicketInput,
+  EditTicketInput,
   EmbeddingStatus,
   PledgeInput,
   RaiseTicketInput,
@@ -68,3 +69,8 @@ export const callDeleteTicket = make<
   DeleteTicketInput,
   { ticketId: string; deleted: true }
 >("deleteTicket");
+
+export const callEditTicket = make<
+  EditTicketInput,
+  { ticketId: string; updated: true }
+>("editTicket");
