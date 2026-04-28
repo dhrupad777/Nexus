@@ -21,10 +21,12 @@ import {
   CheckCircle2,
   ImageIcon,
   MapPin,
+  Pencil,
   ShieldCheck,
   TrendingUp,
   Upload,
   Users,
+  X,
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -34,6 +36,7 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import {
   callAdvancePhase,
   callDeleteTicket,
+  callEditTicket,
   callRecordSignoff,
   callRespondToPledge,
 } from "@/lib/callables";
@@ -249,6 +252,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   const [proofs, setProofs] = useState<PhotoProofDoc[]>([]);
   const [orgNames, setOrgNames] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<Tab>("Contributions");
+  const [editing, setEditing] = useState(false);
 
   // Live ticket — drives the progress bar.
   useEffect(() => {
@@ -409,6 +413,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   const totalFulfilled = ticket.needs.reduce((s, n) => s + (n.quantity * n.progressPct) / 100, 0);
   const totalRemaining = Math.max(0, totalRequired - totalFulfilled);
 
+
   return (
     <div className="td-shell">
       {/* ── Header ── */}
@@ -429,17 +434,40 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
               {ticket.rapid ? " · rapid flow" : " · structured flow"}
             </span>
           </div>
-          <span className="td-expires">
-            {ticket.phase === "CLOSED" && ticket.closedAt
-              ? `closed · ${new Date(ticket.closedAt).toLocaleDateString()}`
-              : `deadline · ${new Date(ticket.deadline).toLocaleDateString()}`}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {isHost && ticket.phase !== "CLOSED" && !editing && (
+              <button
+                type="button"
+                className="td-edit-btn"
+                onClick={() => setEditing(true)}
+                title="Edit ticket"
+              >
+                <Pencil size={14} /> Edit
+              </button>
+            )}
+            <span className="td-expires">
+              {ticket.phase === "CLOSED" && ticket.closedAt
+                ? `closed · ${new Date(ticket.closedAt).toLocaleDateString()}`
+                : `deadline · ${new Date(ticket.deadline).toLocaleDateString()}`}
+            </span>
+          </div>
         </div>
 
-        <h1 className="td-title">{ticket.title}</h1>
-        <p className="td-contribute-body" style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>
-          {ticket.description}
-        </p>
+        {editing ? (
+          <EditTicketForm
+            ticketId={ticketId}
+            currentTitle={ticket.title}
+            currentUrgency={ticket.urgency}
+            onDone={() => setEditing(false)}
+          />
+        ) : (
+          <>
+            <h1 className="td-title">{ticket.title}</h1>
+            <p className="td-contribute-body" style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>
+              {ticket.description}
+            </p>
+          </>
+        )}
 
         <div className="td-meta-row">
           <span className="td-meta-item">
@@ -923,6 +951,169 @@ function HostControls({
           : "No host actions are available in the current phase."}
       </p>
     </>
+  );
+}
+
+// ── Edit ticket form (host-only) ───────────────────────────────────────
+
+function EditTicketForm({
+  ticketId,
+  currentTitle,
+  currentUrgency,
+  onDone,
+}: {
+  ticketId: string;
+  currentTitle: string;
+  currentUrgency: "NORMAL" | "EMERGENCY";
+  onDone: () => void;
+}) {
+  const { user } = useAuth();
+  const [title, setTitle] = useState(currentTitle);
+  const [urgency, setUrgency] = useState(currentUrgency);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function handleSave() {
+    setBusy(true);
+    try {
+      let imageUrl: string | undefined;
+
+      // Upload image if selected
+      if (imageFile && user) {
+        const ext = imageFile.name.includes(".") ? imageFile.name.split(".").pop() : "jpg";
+        const filename = `${randomRequestId()}.${ext}`;
+        const path = `tickets/uploads/${user.uid}/${filename}`;
+        await uploadBytes(storageRef(storage, path), imageFile, {
+          contentType: imageFile.type,
+        });
+        imageUrl = await getDownloadURL(storageRef(storage, path));
+      }
+
+      const payload: Record<string, unknown> = {
+        ticketId,
+        requestId: randomRequestId(),
+      };
+
+      // Only send fields that actually changed
+      if (title !== currentTitle) payload.title = title;
+      if (urgency !== currentUrgency) payload.urgency = urgency;
+      if (imageUrl) payload.images = [imageUrl];
+
+      // Check if anything changed
+      if (!payload.title && !payload.urgency && !payload.images) {
+        toast.info("No changes to save.");
+        onDone();
+        return;
+      }
+
+      await callEditTicket(payload as Parameters<typeof callEditTicket>[0]);
+      toast.success("Ticket updated.");
+      onDone();
+    } catch (err) {
+      toast.error(authErrorToMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleImageSelect(file: File) {
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <div className="td-edit-form">
+      {/* Title */}
+      <div className="td-edit-field">
+        <label className="td-edit-label">Title</label>
+        <input
+          type="text"
+          className="td-edit-input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={200}
+          disabled={busy}
+        />
+      </div>
+
+      {/* Urgency */}
+      <div className="td-edit-field">
+        <label className="td-edit-label">Urgency</label>
+        <div className="td-edit-urgency-row">
+          <button
+            type="button"
+            className={`td-edit-urgency-btn${urgency === "NORMAL" ? " is-active" : ""}`}
+            onClick={() => setUrgency("NORMAL")}
+            disabled={busy}
+          >
+            Normal
+          </button>
+          <button
+            type="button"
+            className={`td-edit-urgency-btn td-edit-urgency-btn--emergency${urgency === "EMERGENCY" ? " is-active" : ""}`}
+            onClick={() => setUrgency("EMERGENCY")}
+            disabled={busy}
+          >
+            <Zap size={12} /> Emergency
+          </button>
+        </div>
+      </div>
+
+      {/* Image */}
+      <div className="td-edit-field">
+        <label className="td-edit-label">Cover image</label>
+        <label className="td-edit-image-upload">
+          <ImageIcon size={16} />
+          <span>{imageFile ? imageFile.name : "Choose image…"}</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            style={{ display: "none" }}
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleImageSelect(f);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {imagePreview && (
+          <div className="td-edit-image-preview">
+            <img src={imagePreview} alt="Preview" />
+            <button
+              type="button"
+              className="td-edit-image-remove"
+              onClick={() => { setImageFile(null); setImagePreview(null); }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="td-edit-actions">
+        <button
+          type="button"
+          className="td-edit-cancel-btn"
+          onClick={onDone}
+          disabled={busy}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="td-pledge-btn"
+          onClick={handleSave}
+          disabled={busy}
+        >
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+      </div>
+    </div>
   );
 }
 

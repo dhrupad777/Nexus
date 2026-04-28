@@ -47,5 +47,6 @@ export { respondToPledge } from "./callables/respondToPledge";
 export { signAgreement } from "./callables/signAgreement";
 export { advancePhase } from "./callables/advancePhase";
 export { recordSignoff } from "./callables/recordSignoff";
+export { editTicket } from "./callables/editTicket";
 export { createPosthocAgreement } from "./callables/createPosthocAgreement";
 export { onboardingChat } from "./callables/onboardingChat";
