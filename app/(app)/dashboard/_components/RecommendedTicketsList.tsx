@@ -35,6 +35,12 @@ interface TicketHeader {
   host: { name: string; type: "NGO" | "ORG" };
   needs: Array<{ resourceCategory: string; quantity: number; unit: string }>;
   geo?: { adminRegion?: string };
+  coverImageUrl: string | null;
+}
+
+interface Props {
+  orgId: string;
+  onCount?: (n: number) => void;
 }
 
 /**
@@ -49,7 +55,7 @@ interface TicketHeader {
  *   - matches: orgId, rapidBroadcast, score DESC
  *   - matches: orgId, rapidBroadcast, createdAt DESC
  */
-export function RecommendedTicketsList({ orgId }: { orgId: string }) {
+export function RecommendedTicketsList({ orgId, onCount }: Props) {
   const [normalMatches, setNormalMatches] = useState<MatchRow[] | null>(null);
   const [rapidMatches, setRapidMatches] = useState<MatchRow[] | null>(null);
   const [headers, setHeaders] = useState<Record<string, TicketHeader | null>>({});
@@ -139,6 +145,14 @@ export function RecommendedTicketsList({ orgId }: { orgId: string }) {
       );
   }, [matches, headers]);
 
+  // Lift count up to the parent so the StatsStrip can mirror it. Pure
+  // presentational — no new queries.
+  useEffect(() => {
+    if (!onCount) return;
+    if (visible === null) return;
+    onCount(visible.length);
+  }, [visible, onCount]);
+
   return (
     <section className="dash-col">
       <header className="dash-col-head">
@@ -183,6 +197,14 @@ function parseMatchRow(d: { id: string; data: () => Record<string, unknown> }): 
 
 function parseTicketHeader(id: string, data: Record<string, unknown>): TicketHeader {
   const hostRaw = (data.host ?? {}) as { name?: unknown; type?: unknown };
+  const cover =
+    typeof data.coverImageUrl === "string" && data.coverImageUrl
+      ? data.coverImageUrl
+      : Array.isArray(data.images) &&
+          typeof (data.images as unknown[])[0] === "string" &&
+          (data.images as string[])[0]
+        ? (data.images as string[])[0]
+        : null;
   return {
     id,
     title: String(data.title ?? "(untitled)"),
@@ -202,28 +224,42 @@ function parseTicketHeader(id: string, data: Record<string, unknown>): TicketHea
         }))
       : [],
     geo: data.geo as { adminRegion?: string } | undefined,
+    coverImageUrl: cover,
   };
 }
 
 function TicketCard({ match, ticket }: { match: MatchRow; ticket: TicketHeader }) {
   const need = ticket.needs[0];
-  const hostLabel = `${ticket.host.name === "—" ? "—" : ticket.host.name} · ${ticket.host.type}`;
+  const region = ticket.geo?.adminRegion?.trim();
   return (
     <Link
       href={`/tickets/${ticket.id}`}
-      className={`dash-card${ticket.rapid ? " dash-card--rapid" : ""}`}
+      className={`dash-card dash-card--with-cover${ticket.rapid ? " dash-card--rapid" : ""}`}
     >
+      <div className="dash-card-cover" aria-hidden>
+        {ticket.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={ticket.coverImageUrl} alt="" />
+        ) : (
+          <div className="dash-card-cover__placeholder" />
+        )}
+      </div>
       <div className="dash-card-body">
         <div className="dash-card-meta">
           {ticket.rapid && <span className="dash-tag dash-tag--emergency">Emergency</span>}
-          <span>{hostLabel}</span>
+          <span>{ticket.host.name === "—" ? "—" : ticket.host.name} · {ticket.host.type}</span>
+          {match.contributionImpactPct > 0 && (
+            <span className="dash-card-impact-chip">
+              fills {Math.round(match.contributionImpactPct)}%
+            </span>
+          )}
         </div>
         <h4 className="dash-card-title">{ticket.title}</h4>
         <div className="dash-card-foot">
-          {ticket.geo?.adminRegion && <span>{ticket.geo.adminRegion}</span>}
+          {region && <span>{region}</span>}
           {need && (
             <>
-              {ticket.geo?.adminRegion && <span className="dash-card-foot-divider" />}
+              {region && <span className="dash-card-foot-divider" />}
               <span>
                 Needs {need.quantity} {need.unit} ({need.resourceCategory})
               </span>

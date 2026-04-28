@@ -28,6 +28,7 @@ export function AppTopbar() {
     { href: "/dashboard", label: "Dashboard" },
     { href: "/tickets", label: "Tickets" },
     { href: "/resources", label: "Resources" },
+    { href: "/profile", label: "Profile" },
   ];
 
   async function onSignOut() {

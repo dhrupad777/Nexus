@@ -1,40 +1,49 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback, useState } from "react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useUserProfile } from "@/lib/auth/useUserProfile";
 import { useOrgRecord } from "@/lib/onboarding/useOrgRecord";
 import { useOrgStatus } from "../resources/_lib/useOrgStatus";
-import { RecommendedTicketsList } from "./_components/RecommendedTicketsList";
-import { ActiveTicketsList } from "./_components/ActiveTicketsList";
+import { EditorialHero } from "./_components/EditorialHero";
+import { LifetimeImpactCard } from "./_components/LifetimeImpactCard";
+import { LiveEmergencyCard } from "./_components/LiveEmergencyCard";
+import { ReliabilityCard } from "./_components/ReliabilityCard";
+import { InFlightCard } from "./_components/InFlightCard";
+import { TopMatchCard } from "./_components/TopMatchCard";
+import { AwaitsSignoffCard } from "./_components/AwaitsSignoffCard";
+import { AiMatchesCard } from "./_components/AiMatchesCard";
+import { ResourceInventoryCard } from "./_components/ResourceInventoryCard";
 import { ProfileCard } from "./_components/ProfileCard";
 
 /**
- * Two-surface dashboard per Albin/Nexus_Dashboard_Logic.md + List.md §2.10.
- * Recommended (primary, AI-driven) on the left; Active (secondary,
- * state-driven) on the right. Stacks vertically below the bento breakpoint.
+ * Editorial dashboard — Stitch design port.
  *
- * Reads: 3 Firestore queries fired in parallel against the viewer's orgId
- *  - tickets array-contains orgId  (Active)
- *  - matches where orgId, score desc, rapidBroadcast=false  (Normal)
- *  - matches where orgId, rapidBroadcast=true               (Rapid)
- * No joins beyond a one-shot ticket-header batch fetch keyed by ticketId
- * for the Recommended cards.
+ * Layout:
+ *   1. Status pre-header + huge greeting + "Today's brief" CTA
+ *   2. Two-column hero: Lifetime impact (light) + Live emergency (dark)
+ *   3. Three-column metrics: Reliability + In-flight + Top match
+ *   4. Three-column actions: Awaits sign-off + AI matches + Resource inventory
+ *   5. ProfileCard (for orgs still uploading docs)
+ *
+ * No new logic on top of what the previous dashboard ran. Each card owns
+ * its own Firestore subscription against existing indexes; no schema or
+ * index additions required. Routing is preserved — every card links to
+ * an existing route.
  */
 export default function Dashboard() {
   const { user, loading, claims } = useAuth();
-  // Read users/{uid} directly for the canonical "did they onboard" signal.
-  // claims.orgId is only issued post-approval, so during PENDING_REVIEW the
-  // claim is empty and we'd otherwise show "Finish onboarding" by mistake.
   const profile = useUserProfile(user?.uid ?? null);
   const profileOrgId = profile.loading ? null : profile.orgId;
   const orgId = claims?.orgId ?? profileOrgId;
   const orgStatus = useOrgStatus(orgId);
   const orgRecord = useOrgRecord(user?.uid ?? null);
 
-  // Token refresh on approval is now handled centrally in AuthProvider so
-  // every page (including /resources) picks up the new orgId claim without
-  // a sign-out/in. No dashboard-local effect needed.
+  // Count lifted from InFlightCard — drives the "N actions waiting"
+  // pre-header chip. Pure presentational data flow.
+  const [actionsWaiting, setActionsWaiting] = useState<number | null>(null);
+  const onInFlightTotal = useCallback((n: number) => setActionsWaiting(n), []);
 
   if (loading || profile.loading || orgStatus.loading) {
     return (
@@ -46,8 +55,6 @@ export default function Dashboard() {
   if (!user) return null;
 
   const onboarded = Boolean(orgId);
-  // The full dashboard requires both ACTIVE status AND a claim-issued orgId
-  // (server-only writes / member-gated rules check the claim, not Firestore).
   const isActive = orgStatus.status === "ACTIVE" && Boolean(claims?.orgId);
 
   if (!onboarded) {
@@ -75,43 +82,52 @@ export default function Dashboard() {
     );
   }
 
+  // Until the org is ACTIVE + the orgId claim is issued, we can't subscribe
+  // to per-org collections (rules block it). Show the editorial hero +
+  // ProfileCard so the user can finish onboarding, then unlock everything.
+  if (!isActive || !orgId) {
+    return (
+      <div className="stack ed-shell" style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <EditorialHero
+          displayName={user.displayName}
+          email={user.email}
+          orgRecord={orgRecord}
+          actionsWaiting={null}
+        />
+        <ProfileCard orgRecord={orgRecord} />
+      </div>
+    );
+  }
+
   return (
-    <div className="stack" style={{ maxWidth: 1200, margin: "0 auto" }}>
-      <header className="stack-sm">
-        <h1
-          style={{
-            fontFamily: "var(--font-display)",
-            fontSize: 32,
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            margin: 0,
-          }}
-        >
-          Dashboard
-        </h1>
-        <p className="muted-text">
-          {isActive
-            ? "Your org is approved. Recommended tickets and active work below."
-            : "Track your profile and unlock matching once approved."}
-        </p>
-      </header>
+    <div className="stack ed-shell" style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <EditorialHero
+        displayName={user.displayName}
+        email={user.email}
+        orgRecord={orgRecord}
+        actionsWaiting={actionsWaiting}
+      />
 
-      <ProfileCard orgRecord={orgRecord} />
+      <div className="ed-grid ed-grid--hero">
+        <LifetimeImpactCard orgId={orgId} />
+        <LiveEmergencyCard orgId={orgId} />
+      </div>
 
-      {isActive && orgId && (
-        <>
-          <div className="row" style={{ justifyContent: "flex-start" }}>
-            <Link href="/tickets/new" className="btn btn-primary">
-              Raise a ticket
-            </Link>
-          </div>
-          <div className="dashboard-bento">
-            <RecommendedTicketsList orgId={orgId} />
-            <ActiveTicketsList orgId={orgId} />
-          </div>
-        </>
+      <div className="ed-grid ed-grid--three">
+        <ReliabilityCard orgRecord={orgRecord} />
+        <InFlightCard orgId={orgId} onTotal={onInFlightTotal} />
+        <TopMatchCard orgId={orgId} />
+      </div>
+
+      <div className="ed-grid ed-grid--three">
+        <AwaitsSignoffCard orgId={orgId} />
+        <AiMatchesCard orgId={orgId} />
+        <ResourceInventoryCard orgId={orgId} />
+      </div>
+
+      {!orgRecord.loading && orgRecord.exists && !orgRecord.isComplete && (
+        <ProfileCard orgRecord={orgRecord} />
       )}
     </div>
   );
 }
-

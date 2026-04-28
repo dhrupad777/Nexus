@@ -29,6 +29,13 @@ interface ActiveRow {
   progressPct: number;
   contributorCount: number;
   lastUpdatedAt: number;
+  coverImageUrl: string | null;
+  region: string | null;
+}
+
+interface Props {
+  orgId: string;
+  onCounts?: (counts: { total: number; hosting: number; contributing: number }) => void;
 }
 
 /**
@@ -36,7 +43,7 @@ interface ActiveRow {
  * viewerOrgId order by lastUpdatedAt desc limit 50`. Per `Albin/Nexus_Dashboard_Logic.md`
  * §3 + List.md §2.10 contract.
  */
-export function ActiveTicketsList({ orgId }: { orgId: string }) {
+export function ActiveTicketsList({ orgId, onCounts }: Props) {
   const [rows, setRows] = useState<ActiveRow[] | null>(null);
 
   useEffect(() => {
@@ -53,6 +60,19 @@ export function ActiveTicketsList({ orgId }: { orgId: string }) {
         const out: ActiveRow[] = snap.docs
           .map((d) => {
             const x = d.data();
+            const cover =
+              typeof x.coverImageUrl === "string" && x.coverImageUrl
+                ? x.coverImageUrl
+                : Array.isArray(x.images) &&
+                    typeof (x.images as unknown[])[0] === "string" &&
+                    (x.images as string[])[0]
+                  ? (x.images as string[])[0]
+                  : null;
+            const geo = (x.geo as { adminRegion?: unknown } | undefined) ?? {};
+            const region =
+              typeof geo.adminRegion === "string" && geo.adminRegion.trim()
+                ? geo.adminRegion.trim()
+                : null;
             return {
               id: d.id,
               title: String(x.title ?? "(untitled)"),
@@ -63,6 +83,8 @@ export function ActiveTicketsList({ orgId }: { orgId: string }) {
               progressPct: Number(x.progressPct ?? 0),
               contributorCount: Number(x.contributorCount ?? 0),
               lastUpdatedAt: Number(x.lastUpdatedAt ?? x.createdAt ?? 0),
+              coverImageUrl: cover,
+              region,
             };
           })
           // Closed tickets live on /profile and the homepage's "Recently
@@ -75,6 +97,17 @@ export function ActiveTicketsList({ orgId }: { orgId: string }) {
     );
     return unsub;
   }, [orgId]);
+
+  // Lift counts up so the StatsStrip on the dashboard can mirror this list.
+  // Pure presentational data flow — no extra queries fire.
+  useEffect(() => {
+    if (!onCounts) return;
+    if (rows === null) return;
+    const total = rows.length;
+    const hosting = rows.filter((r) => r.hostOrgId === orgId).length;
+    const contributing = total - hosting;
+    onCounts({ total, hosting, contributing });
+  }, [rows, orgId, onCounts]);
 
   if (rows === null) {
     return (
@@ -144,18 +177,22 @@ function ActiveCard({
   return (
     <Link
       href={`/tickets/${row.id}`}
-      className={`dash-card${row.rapid ? " dash-card--rapid" : ""}`}
+      className={`dash-card dash-card--with-cover${row.rapid ? " dash-card--rapid" : ""}`}
     >
+      <div className="dash-card-cover" aria-hidden>
+        {row.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={row.coverImageUrl} alt="" />
+        ) : (
+          <div className="dash-card-cover__placeholder" />
+        )}
+      </div>
       <div className="dash-card-body">
         <div className="dash-card-meta">
           {row.role === "HOST" ? (
             <span className="dash-tag dash-tag--host">Host</span>
           ) : (
-            <span className="dash-tag" style={{
-              background: "var(--color-surface-2)",
-              color: "var(--color-text-2)",
-              border: "1px solid var(--glass-border)",
-            }}>Contributor</span>
+            <span className="dash-tag dash-tag--neutral">Contributor</span>
           )}
           <span className={`dash-card-status ${statusToneCls}`}>
             {status.label}
@@ -168,9 +205,13 @@ function ActiveCard({
         </div>
         <h4 className="dash-card-title">{row.title}</h4>
         <div className="dash-card-foot">
-          <span>
-            {row.host.name} · {row.host.type}
-          </span>
+          <span>{row.host.name} · {row.host.type}</span>
+          {row.region && (
+            <>
+              <span className="dash-card-foot-divider" />
+              <span>{row.region}</span>
+            </>
+          )}
           {row.contributorCount > 0 && (
             <>
               <span className="dash-card-foot-divider" />
@@ -181,7 +222,7 @@ function ActiveCard({
           )}
         </div>
       </div>
-      <span className="dash-card-pct">{Math.round(row.progressPct)}%</span>
+      <span className="dash-card-pct num">{Math.round(row.progressPct)}%</span>
     </Link>
   );
 }

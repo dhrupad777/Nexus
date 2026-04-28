@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { Check } from "lucide-react";
 import type { OrgRecordState } from "@/lib/onboarding/useOrgRecord";
 import { docsUploadedKey, requiredDocs } from "@/lib/onboarding/requirements";
 import type { DocType } from "@/app/(app)/onboard/_lib/types";
 
 const DOC_LABELS: Record<DocType, string> = {
   PAN: "PAN",
-  REG_CERT: "Registration Certificate",
+  REG_CERT: "Registration",
   GST: "GST",
   CIN: "CIN",
-  "80G": "80G Certificate",
-  "12A": "12A Certificate",
+  "80G": "80G",
+  "12A": "12A",
 };
 
 function statusLabel(status: string | null): string {
@@ -30,6 +31,13 @@ function statusBadgeClass(status: string | null): string {
   return "badge badge-normal";
 }
 
+function orgInitial(name: string | null | undefined): string {
+  if (!name) return "·";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return parts[0]?.charAt(0).toUpperCase() ?? "·";
+}
+
 export function ProfileCard({ orgRecord }: { orgRecord: OrgRecordState }) {
   if (orgRecord.loading) {
     return (
@@ -43,14 +51,15 @@ export function ProfileCard({ orgRecord }: { orgRecord: OrgRecordState }) {
   const { name, type, status, docsUploaded, isComplete } = orgRecord;
   const required = requiredDocs(type);
   const uploadedCount = required.filter((d) => docsUploaded[docsUploadedKey(d)] === true).length;
-  const missing = required.filter((d) => docsUploaded[docsUploadedKey(d)] !== true);
   const progressPct = required.length > 0 ? Math.round((uploadedCount / required.length) * 100) : 0;
   const orgName = (name && name.trim()) || "Your organization";
   const editHref = type ? `/onboard/form?type=${type}` : "/onboard";
+  const initial = orgInitial(name);
 
   return (
     <section className="card profile-card">
       <header className="profile-card__head">
+        <div className="profile-card__avatar" aria-hidden>{initial}</div>
         <div className="profile-card__title-block">
           <h2 className="profile-card__title">{orgName}</h2>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
@@ -67,29 +76,33 @@ export function ProfileCard({ orgRecord }: { orgRecord: OrgRecordState }) {
         </p>
       )}
 
-      <div className="profile-card__progress">
-        <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Documents</span>
-          <span className="muted-text num">
-            {uploadedCount} of {required.length} uploaded
-          </span>
-        </div>
-        <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${progressPct}%` }} />
-        </div>
-      </div>
-
-      {missing.length > 0 && (
-        <div className="stack-sm">
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Still needed</span>
-          <ul className="profile-card__missing">
-            {missing.map((d) => (
-              <li key={d}>
-                <span className="profile-card__dot" aria-hidden />
-                {DOC_LABELS[d] ?? d}
-              </li>
-            ))}
-          </ul>
+      {required.length > 0 && (
+        <div className="profile-card__progress">
+          <div className="row" style={{ justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Documents</span>
+            <span className="muted-text num">
+              {uploadedCount} of {required.length} uploaded
+            </span>
+          </div>
+          <ol className="profile-card__steps" aria-label="Document upload progress">
+            {required.map((d) => {
+              const done = docsUploaded[docsUploadedKey(d)] === true;
+              return (
+                <li
+                  key={d}
+                  className={`profile-card__step${done ? " profile-card__step--done" : ""}`}
+                >
+                  <span className="profile-card__step-mark" aria-hidden>
+                    {done ? <Check size={11} strokeWidth={3} /> : null}
+                  </span>
+                  <span className="profile-card__step-label">{DOC_LABELS[d] ?? d}</span>
+                </li>
+              );
+            })}
+          </ol>
+          <div className="progress-bar" style={{ marginTop: 12 }}>
+            <div className="progress-fill" style={{ width: `${progressPct}%` }} />
+          </div>
         </div>
       )}
 
